@@ -1,6 +1,6 @@
 /** 答题评分。 */
 
-import type { FlopAnalysis } from '../poker/analyzer';
+import type { ScenarioAnalysis } from '../poker/analyzer';
 import type { HandCategory } from '../poker/evaluator';
 import { isTrainableCategory } from '../poker/evaluator';
 import { getProbabilityRange } from './ranges';
@@ -37,7 +37,7 @@ export interface ScoreResult {
 
 export function scoreAnswer(
   answer: TrainerAnswer,
-  analysis: FlopAnalysis,
+  analysis: ScenarioAnalysis,
 ): ScoreResult {
   const actualCategories = analysis.byCategory
     .filter(

@@ -1,4 +1,4 @@
-import type { FlopAnalysis } from '../../poker/analyzer';
+import type { ScenarioAnalysis } from '../../poker/analyzer';
 import {
   HAND_CATEGORY_LABELS,
   isTrainableCategory,
@@ -10,7 +10,7 @@ import { CountBadge, Pct } from '../ProbabilityText';
 import { rangeLabel, Verdict } from './shared';
 
 interface BeatingPanelProps {
-  analysis: FlopAnalysis;
+  analysis: ScenarioAnalysis;
   /** 直接看答案（未作答）时为 null。 */
   score: ScoreResult | null;
   answer: TrainerAnswer;

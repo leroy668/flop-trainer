@@ -313,6 +313,36 @@ h3 {
   font-weight: 600;
 }
 
+/* 刚刚发出来的那张公共牌 */
+.board__group--new .board__label {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.board__group--new .card {
+  box-shadow: 0 0 0 2px var(--accent-soft), 0 2px 6px rgba(15, 23, 42, 0.12);
+}
+
+/* 还没发的公共牌 */
+.card--empty {
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  box-shadow: none;
+}
+
+/* 当前处于哪一条街 */
+.street-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 8px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
 .board__cards {
   display: flex;
   gap: 10px;
@@ -1122,6 +1152,14 @@ h3 {
     minmax(100px, 1fr) minmax(90px, 1fr);
   gap: 8px;
   align-items: center;
+}
+
+/* 转牌圈只剩一张牌可发，隐藏「到河牌」那一列。 */
+.draw-table--no-final .draw-table__head,
+.draw-table--no-final .draw-table__row {
+  grid-template-columns:
+    minmax(120px, 1.5fr) minmax(110px, 1.2fr) minmax(90px, 1fr)
+    minmax(90px, 1fr);
 }
 
 .draw-table__head {

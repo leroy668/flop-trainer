@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { FlopAnalysis } from '../poker/analyzer';
+import type { ScenarioAnalysis } from '../poker/analyzer';
 import { HAND_CATEGORY_LABELS, isTrainableCategory } from '../poker/evaluator';
 import { formatPercent } from '../trainer/ranges';
 import type { ScoreResult } from '../trainer/scoring';
@@ -10,7 +10,7 @@ import { OverallPanel } from './result/OverallPanel';
 import { SameCategoryPanel } from './result/SameCategoryPanel';
 
 interface ResultBreakdownProps {
-  analysis: FlopAnalysis;
+  analysis: ScenarioAnalysis;
   /** 直接看答案（未作答）时为 null，此时隐藏所有对错与作答相关信息。 */
   score: ScoreResult | null;
   answer: TrainerAnswer;
@@ -89,13 +89,25 @@ export function ResultBreakdown({
     },
     {
       id: 'draws',
-      label: '后续听牌（转牌 / 河牌）',
+      label:
+        analysis.remainingBoardCards >= 2
+          ? '后续听牌（转牌 / 河牌）'
+          : '后续听牌（河牌）',
       short: '后续听牌',
-      hint: '顺子 / 同花能补成多少',
+      hint:
+        analysis.remainingBoardCards >= 2
+          ? '顺子 / 同花能补成多少'
+          : '河牌能补成顺子 / 同花吗',
     },
   ];
 
-  const current = tabs.find((tab) => tab.id === active) ?? tabs[0];
+  // 河牌已经发完，没有后续牌可算，直接不显示听牌选项卡。
+  const visibleTabs =
+    analysis.remainingBoardCards === 0
+      ? tabs.filter((tab) => tab.id !== 'draws')
+      : tabs;
+
+  const current = visibleTabs.find((tab) => tab.id === active) ?? visibleTabs[0];
 
   return (
     <div className="result">
@@ -126,7 +138,7 @@ export function ResultBreakdown({
        * 这样不用额外实现方向键导航，屏幕阅读器也不会以为有隐藏面板。
        */}
       <div className="result-tabs" role="group" aria-label="结果分类">
-        {tabs.map((tab) => (
+        {visibleTabs.map((tab) => (
           <button
             key={tab.id}
             type="button"

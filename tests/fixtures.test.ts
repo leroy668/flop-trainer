@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { analyzeFlopScenario } from '../src/poker/analyzer';
+import { analyzeScenario } from '../src/poker/analyzer';
 import { HandCategory } from '../src/poker/evaluator';
-import { generateRandomFlopScenario } from '../src/poker/randomScenario';
+import { dealNextStreet, generateRandomScenario } from '../src/poker/randomScenario';
 import { getRemainingDeck } from '../src/poker/cards';
 import { enumerateOpponentHands } from '../src/poker/combinations';
 import { scenario } from './helpers';
@@ -13,7 +13,7 @@ import { scenario } from './helpers';
  * Flop:  A♥ 8♣ 3♦
  */
 describe('Fixture: A♠K♦ / A♥8♣3♦', () => {
-  const analysis = analyzeFlopScenario(scenario('As Kd', 'Ah 8c 3d'));
+  const analysis = analyzeScenario(scenario('As Kd', 'Ah 8c 3d'));
   const twoPair = analysis.byCategory.find(
     (entry) => entry.category === HandCategory.TwoPair,
   )!;
@@ -83,13 +83,13 @@ describe('Fixture: A♠K♦ / A♥8♣3♦', () => {
 describe('随机场景 Property Test（1000 个）', () => {
   it('每个随机场景都满足核心不变量', { timeout: 60000 }, () => {
     for (let i = 0; i < 1000; i += 1) {
-      const s = generateRandomFlopScenario();
+      const s = generateRandomScenario();
       const remaining = getRemainingDeck(s);
       const hands = enumerateOpponentHands(remaining);
       expect(remaining).toHaveLength(47);
       expect(hands).toHaveLength(1081);
 
-      const analysis = analyzeFlopScenario(s);
+      const analysis = analyzeScenario(s);
       expect(analysis.aheadCount + analysis.tieCount + analysis.behindCount).toBe(1081);
       expect(analysis.totalOpponentCombos).toBe(1081);
 
@@ -101,6 +101,53 @@ describe('随机场景 Property Test（1000 个）', () => {
 
       const same = analysis.sameCategory;
       expect(same.aheadCount + same.tieCount + same.behindCount).toBe(same.totalCount);
+    }
+  });
+});
+
+/**
+ * 转牌圈 / 河牌圈同样跑一遍不变量，确保「7 张取最优 5 张」没有破坏枚举逻辑。
+ */
+describe('随机场景 Property Test（转牌 60 / 河牌 60）', () => {
+  it('转牌圈与河牌圈都满足核心不变量', { timeout: 120000 }, () => {
+    for (let i = 0; i < 60; i += 1) {
+      for (const street of ['turn', 'river'] as const) {
+        let s = generateRandomScenario();
+        s = dealNextStreet(s);
+        if (street === 'river') s = dealNextStreet(s);
+
+        const remaining = getRemainingDeck(s);
+        const hands = enumerateOpponentHands(remaining);
+        const total = street === 'turn' ? 1035 : 990;
+        expect(remaining).toHaveLength(street === 'turn' ? 46 : 45);
+        expect(hands).toHaveLength(total);
+
+        const analysis = analyzeScenario(s);
+        expect(analysis.street).toBe(street);
+        expect(analysis.totalOpponentCombos).toBe(total);
+        expect(analysis.aheadCount + analysis.tieCount + analysis.behindCount).toBe(
+          total,
+        );
+        expect(
+          analysis.byCategory.reduce((acc, item) => acc + item.totalCount, 0),
+        ).toBe(total);
+        expect(
+          analysis.byCategory.reduce((acc, item) => acc + item.aheadCount, 0),
+        ).toBe(analysis.aheadCount);
+
+        const same = analysis.sameCategory;
+        expect(same.aheadCount + same.tieCount + same.behindCount).toBe(
+          same.totalCount,
+        );
+
+        // 每个分组内成员概率必须真的相同（合并算法的关键不变量）。
+        for (const entry of analysis.byCategory) {
+          for (const group of entry.groups) {
+            expect(group.probability).toBeCloseTo(group.comboCount / total, 12);
+            expect(group.combos.length).toBeGreaterThan(0);
+          }
+        }
+      }
     }
   });
 });

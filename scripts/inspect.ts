@@ -1,20 +1,37 @@
 /**
  * 手动检查脚本：
  *   npx vite-node scripts/inspect.ts
- * 打印 Fixture 场景的完整分析，便于人工核对。
+ *   npx vite-node scripts/inspect.ts --hero="As Kd" --board="Ah 8c 3d 2s 9h"
+ * 打印指定场景的完整分析，便于人工核对。公共牌 3 张 = 翻牌圈，4 张 = 转牌圈，5 张 = 河牌圈。
  */
-import { analyzeFlopScenario } from '../src/poker/analyzer';
+import { analyzeScenario } from '../src/poker/analyzer';
 import { HAND_CATEGORY_LABELS, describeHandValue } from '../src/poker/evaluator';
-import { parseCards } from '../src/poker/cards';
+import { parseCard, remainingBoardCards, STREET_LABELS, streetOf } from '../src/poker/cards';
+import type { Scenario } from '../src/poker/cards';
+import { analyzeDraws } from '../src/poker/draws';
 import { formatPercent } from '../src/trainer/ranges';
 
-const hero = parseCards('As Kd');
-const flop = parseCards('Ah 8c 3d');
-const analysis = analyzeFlopScenario({
-  hero: [hero[0], hero[1]],
-  flop: [flop[0], flop[1], flop[2]],
-});
+function option(name: string): string | null {
+  const hit = process.argv.find((arg) => arg.startsWith(`--${name}=`));
+  return hit ? hit.slice(name.length + 3).replace(/^"|"$/g, '') : null;
+}
 
+const heroInput = option('hero') ?? 'As Kd';
+const boardInput = option('board') ?? 'Ah 8c 3d';
+
+const hero = heroInput.split(/\s+/).map(parseCard);
+const board = boardInput.split(/\s+/).map(parseCard);
+const scenario: Scenario = {
+  hero: [hero[0], hero[1]],
+  flop: [board[0], board[1], board[2]],
+  ...(board[3] ? { turn: board[3] } : {}),
+  ...(board[4] ? { river: board[4] } : {}),
+};
+
+const analysis = analyzeScenario(scenario);
+const street = streetOf(scenario);
+
+console.log(`${STREET_LABELS[street]}（还要发 ${remainingBoardCards(scenario)} 张公共牌）`);
 console.log('Hero:', describeHandValue(analysis.heroHandValue));
 console.log(
   `总体: 领先 ${analysis.aheadCount} / 平手 ${analysis.tieCount} / 落后 ${analysis.behindCount} = ${analysis.totalOpponentCombos}`,
@@ -50,4 +67,27 @@ console.log(
 );
 for (const group of same.aheadGroups) {
   console.log(`    ${group.label}: ${group.comboCount} 组合`);
+}
+
+const draws = analyzeDraws(scenario);
+console.log('\n听牌:');
+if (draws.hero.finished) {
+  console.log('  河牌已发完，没有后续听牌。');
+} else if (draws.hero.rows.length === 0) {
+  console.log('  没有顺子 / 同花听牌。');
+}
+for (const row of draws.hero.rows) {
+  console.log(
+    `  ${row.label}: 补牌 ${row.completion.outs.length} 张, 下一张 ${row.completion.nextCount}/${row.completion.nextTotal}, 发完 ${row.completion.finalCount}/${row.completion.finalTotal}`,
+  );
+}
+if (!draws.hero.finished && draws.hero.rows.length > 1) {
+  console.log(
+    `  并集: 下一张 ${draws.hero.union.nextCount}/${draws.hero.union.nextTotal}, 发完 ${draws.hero.union.finalCount}/${draws.hero.union.finalTotal}`,
+  );
+}
+if (!draws.hero.finished) {
+  console.log(
+    `  对手: 有听牌 ${draws.opponent.drawingCombos} / ${draws.opponent.totalCombos}, 拿到且补成 ${formatPercent(draws.opponent.completeProbability)}`,
+  );
 }

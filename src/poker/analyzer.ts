@@ -1,26 +1,29 @@
 /**
- * 核心分析：枚举 1081 个对手组合，评价、比较并聚合。
+ * 核心分析：枚举对手组合，评价、比较并聚合。
  *
  * 所有概率都来自完整的
- *   52 张牌 -> 移除 5 张已知牌 -> 枚举 C(47,2)=1081 -> 评价 -> 比较 -> 聚合
- * 流程，禁止任何硬编码。
+ *   52 张牌 -> 移除已知牌（翻牌 47 / 转牌 46 / 河牌 45 张）
+ *   -> 枚举 C(n,2) 个对手组合（1081 / 1035 / 990）
+ *   -> 取最优五张 -> 比较 -> 聚合
+ * 流程，禁止任何硬编码。翻牌圈是 5 张取 5，转牌/河牌则是最优五张。
  */
 
-import type { FlopScenario } from './cards';
-import { getRemainingDeck } from './cards';
+import type { Scenario, Street } from './cards';
+import { boardCards, getRemainingDeck, remainingBoardCards, streetOf } from './cards';
 import type { HoleCards } from './combinations';
-import { enumerateOpponentHands } from './combinations';
+import { enumerateOpponentHands, pairCount } from './combinations';
 import type { CompareResult } from './compare';
 import { compareHandValues } from './compare';
 import type { HandValue } from './evaluator';
 import {
   ALL_HAND_CATEGORIES,
-  evaluateFiveCards,
+  evaluateBestHand,
   HandCategory,
   rankValueToLabel,
 } from './evaluator';
 import { getRankGroup, rankGroupSortValue } from './grouping';
 
+/** 翻牌圈（剩余 47 张）的对手等权组合数 C(47,2)。 */
 export const TOTAL_OPPONENT_COMBOS = 1081;
 
 export type Comparison = 'ahead' | 'tie' | 'behind';
@@ -39,7 +42,7 @@ export interface RankGroupAnalysis {
   label: string;
   /** 组合数量（行内全部成员的总和）。 */
   comboCount: number;
-  /** comboCount / 1081。 */
+  /** comboCount / 总组合数。 */
   probability: number;
   /**
    * 行名列出的成员类型个数（未合并时为 1）。
@@ -61,7 +64,7 @@ export interface CategoryAnalysis {
   totalCount: number;
   /** 属于这个牌型且能压过 Hero 的组合数量。 */
   aheadCount: number;
-  /** aheadCount / 1081。 */
+  /** aheadCount / 总组合数。 */
   aheadProbability: number;
   /** 只包含确实压过 Hero 的组合。 */
   groups: RankGroupAnalysis[];
@@ -80,8 +83,14 @@ export interface SameCategoryAnalysis {
   aheadGroups: RankGroupAnalysis[];
 }
 
-export interface FlopAnalysis {
-  scenario: FlopScenario;
+export interface ScenarioAnalysis {
+  scenario: Scenario;
+  /** 翻牌圈 / 转牌圈 / 河牌圈。 */
+  street: Street;
+  /** 还差几张公共牌发完（翻牌后 2、转牌后 1、河牌后 0）。 */
+  remainingBoardCards: number;
+  /** 剩余未知牌张数：47 / 46 / 45。 */
+  remainingCount: number;
   heroHandValue: HandValue;
   totalOpponentCombos: number;
 
@@ -169,6 +178,7 @@ interface DescribedGroup {
 
 function groupAheadResults(
   results: readonly OpponentHandResult[],
+  totalOpponentCombos: number,
 ): RankGroupAnalysis[] {
   const map = new Map<string, DescribedGroup>();
   for (const result of results) {
@@ -195,7 +205,7 @@ function groupAheadResults(
     return b.sortValue - a.sortValue;
   });
 
-  return mergeSameProbabilityGroups(groups);
+  return mergeSameProbabilityGroups(groups, totalOpponentCombos);
 }
 
 /**
@@ -208,6 +218,7 @@ function groupAheadResults(
  */
 function mergeSameProbabilityGroups(
   groups: readonly DescribedGroup[],
+  totalOpponentCombos: number,
 ): RankGroupAnalysis[] {
   interface MergedGroup {
     subgroup?: string;
@@ -247,7 +258,7 @@ function mergeSameProbabilityGroups(
         ? `${group.subgroup} ${joined}`
         : `${joined}${group.mergeSuffix ?? ''}`,
       comboCount: group.combos.length,
-      probability: group.combos.length / TOTAL_OPPONENT_COMBOS,
+      probability: group.combos.length / totalOpponentCombos,
       memberCount: group.tokens.length,
       // 行名里已经写了二级分类，不再额外渲染小标题。
       subgroup: undefined,
@@ -256,15 +267,21 @@ function mergeSameProbabilityGroups(
   });
 }
 
-export function analyzeFlopScenario(scenario: FlopScenario): FlopAnalysis {
-  const heroCards = [...scenario.hero, ...scenario.flop];
-  const heroHandValue = evaluateFiveCards(heroCards);
+/**
+ * 分析当前牌面（翻牌 / 转牌 / 河牌）下，对手两张随机牌相对 Hero 的牌力分布。
+ *
+ * 双方都用「自己的两张底牌 + 全部公共牌」里最强的 5 张评价，口径完全一致。
+ */
+export function analyzeScenario(scenario: Scenario): ScenarioAnalysis {
+  const street = streetOf(scenario);
+  const board = boardCards(scenario);
+  const heroHandValue = evaluateBestHand([...scenario.hero, ...board]);
 
   const remainingDeck = getRemainingDeck(scenario);
   const opponentHands = enumerateOpponentHands(remainingDeck);
 
   const results: OpponentHandResult[] = opponentHands.map((holeCards) => {
-    const opponentValue = evaluateFiveCards([...holeCards, ...scenario.flop]);
+    const opponentValue = evaluateBestHand([...holeCards, ...board]);
     const comparisonValue: CompareResult = compareHandValues(
       opponentValue,
       heroHandValue,
@@ -301,7 +318,7 @@ export function analyzeFlopScenario(scenario: FlopScenario): FlopAnalysis {
       totalCount: inCategory.length,
       aheadCount: aheadInCategory.length,
       aheadProbability: aheadInCategory.length / total,
-      groups: groupAheadResults(aheadInCategory),
+      groups: groupAheadResults(aheadInCategory, total),
     };
   });
 
@@ -336,11 +353,14 @@ export function analyzeFlopScenario(scenario: FlopScenario): FlopAnalysis {
       sameCategoryResults.length > 0
         ? sameBehind.length / sameCategoryResults.length
         : 0,
-    aheadGroups: groupAheadResults(sameAhead),
+    aheadGroups: groupAheadResults(sameAhead, total),
   };
 
   return {
     scenario,
+    street,
+    remainingBoardCards: remainingBoardCards(scenario),
+    remainingCount: remainingDeck.length,
     heroHandValue,
     totalOpponentCombos: total,
     aheadCount,

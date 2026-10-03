@@ -4,6 +4,7 @@
  * 选项：
  *   <html 路径>          要冒烟的 HTML（默认 flop-trainer.html）
  *   --answer=first|all   先自动答题再检查（first=只选第一个牌型，all=全选）
+ *   --deal=1|2           在结果页点「发转牌」/「发河牌」，1=到转牌圈，2=到河牌圈
  *   --tab=<序号>         只点开第 N 个选项卡（0 起算）
  *   --shot=<png 路径>    截图而不是打 DOM（配合 --tab 用）
  *   --size=WxH           视口大小（默认 1200x900，手机用 390x844）
@@ -11,6 +12,7 @@
  * 例：
  *   npm run build:single && node scripts/_smoke.mjs
  *   node scripts/_smoke.mjs --answer=all
+ *   node scripts/_smoke.mjs --deal=1 --answer=all
  *   node scripts/_smoke.mjs --size=390x844 --tab=1 --shot="$TEMP/tabs.png"
  */
 import { execFileSync } from 'node:child_process';
@@ -25,6 +27,7 @@ const option = (name) => {
 };
 
 const answerMode = option('answer');
+const deals = Number(option('deal') ?? 0);
 const tabIndex = option('tab') === null ? null : Number(option('tab'));
 const shot = option('shot');
 const [winW, winH] = (option('size') ?? '1200x900').split('x');
@@ -38,6 +41,8 @@ const driver = `
 window.addEventListener('load', function () {
   var ANSWER_MODE = ${JSON.stringify(answerMode)};
   var TAB_INDEX = ${JSON.stringify(tabIndex)};
+  var DEALS_LEFT = ${JSON.stringify(Number.isFinite(deals) ? deals : 0)};
+  var TICK_LIMIT = 80 + DEALS_LEFT * 40;
   var txt = function (el) { return el ? el.innerText.replace(/\\s+/g, ' ').trim() : null; };
   var marker = function (payload) {
     var pre = document.createElement('pre');
@@ -49,8 +54,29 @@ window.addEventListener('load', function () {
   setTimeout(function () {
     var toggle = document.querySelector('.switch input');
     if (!ANSWER_MODE && toggle && !toggle.checked) toggle.click();
-    setTimeout(ANSWER_MODE ? autoAnswer : openTabs, ANSWER_MODE ? 250 : 700);
+    setTimeout(ANSWER_MODE ? autoAnswer : reachedResult, ANSWER_MODE ? 250 : 700);
   }, 300);
+
+  function dealButton() {
+    return [].slice.call(document.querySelectorAll('.actions--sticky .button'))
+      .filter(function (b) { return b.innerText.indexOf('发') === 0; })[0] || null;
+  }
+
+  /** 结果页就绪：先按需发下一条街，再遍历选项卡。 */
+  function reachedResult() {
+    var deal = dealButton();
+    if (DEALS_LEFT > 0 && deal) {
+      DEALS_LEFT -= 1;
+      deal.click();
+      // 转牌 / 河牌要重新枚举一遍（990 个组合），多等一会儿。
+      setTimeout(function () {
+        if (ANSWER_MODE) autoAnswer(); else reachedResult();
+      }, 900);
+      return;
+    }
+    if (TAB_INDEX === null) walkTabs();
+    else openTabs();
+  }
 
   function openTabs() {
     var tabs = document.querySelectorAll('.result-tab');
@@ -82,10 +108,10 @@ window.addEventListener('load', function () {
   function autoAnswer() {
     ticks += 1;
     if (document.querySelector('.result-tabs')) {
-      setTimeout(TAB_INDEX === null ? walkTabs : openTabs, 250);
+      setTimeout(reachedResult, 250);
       return;
     }
-    if (ticks > 60) {
+    if (ticks > TICK_LIMIT) {
       marker({ mode: ANSWER_MODE, stuck: true, log: log.slice(0, 40),
         body: txt(document.body).slice(0, 700) });
       return;
@@ -115,9 +141,9 @@ window.addEventListener('load', function () {
     }
     // 只认作答区里的按钮，避免点到页头的「换一题」。
     var button = [].slice.call(document.querySelectorAll('.actions .button'))
-      .filter(function (b) { return !b.disabled; })[0];
+      .filter(function (b) { return !b.disabled && b.innerText.indexOf('发') !== 0; })[0];
     if (button) { act(button, 150); return; }
-    openTabs();
+    reachedResult();
   }
 
   // ---- 依次点开每个选项卡，抓每块内容 ----
@@ -147,9 +173,13 @@ window.addEventListener('load', function () {
         marker({
           mode: ANSWER_MODE || 'reveal',
           viewport: [window.innerWidth, window.innerHeight],
+          street: txt(document.querySelector('.street-badge')),
+          header: txt(document.querySelector('.page__header p')),
           scenario: txt(document.querySelector('.board')),
+          emptyBoards: document.querySelectorAll('.card--empty').length,
           heroType: txt(document.querySelector('.hero-type')),
           steps: steps,
+          tabLabels: [].map.call(tabs, txt),
           tabBar: bar
             ? {
                 height: Math.round(bar.getBoundingClientRect().height),

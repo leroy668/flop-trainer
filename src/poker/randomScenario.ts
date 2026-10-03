@@ -1,7 +1,7 @@
 /** 随机出题。 */
 
-import type { Card, FlopScenario } from './cards';
-import { createDeck, validateScenario } from './cards';
+import type { Card, Scenario } from './cards';
+import { createDeck, getRemainingDeck, streetOf, validateScenario } from './cards';
 
 export type ScenarioTag =
   | 'top-pair'
@@ -34,16 +34,34 @@ function pickUnique(deck: Card[], count: number, rng: () => number): Card[] {
 }
 
 /** 随机抽取 5 张唯一牌：2 张 Hero + 3 张 Flop。 */
-export function generateRandomFlopScenario(
+export function generateRandomScenario(
   options: GenerateScenarioOptions = {},
-): FlopScenario {
+): Scenario {
   const rng = options.rng ?? Math.random;
   const deck = createDeck();
   const picked = pickUnique(deck, 5, rng);
-  const scenario: FlopScenario = {
+  const scenario: Scenario = {
     hero: [picked[0], picked[1]],
     flop: [picked[2], picked[3], picked[4]],
   };
   validateScenario(scenario);
   return scenario;
+}
+
+/**
+ * 发下一张公共牌：翻牌 -> 转牌、转牌 -> 河牌，河牌之后原样返回。
+ *
+ * 新牌从「已知牌之外的全部剩余牌」中等概率抽一张，
+ * 与前面的发牌完全一致（不偷看任何人的底牌）。
+ */
+export function dealNextStreet(
+  scenario: Scenario,
+  rng: () => number = Math.random,
+): Scenario {
+  const street = streetOf(scenario);
+  if (street === 'river') return scenario;
+
+  const remaining = getRemainingDeck(scenario);
+  const card = remaining[Math.floor(rng() * remaining.length)];
+  return street === 'flop' ? { ...scenario, turn: card } : { ...scenario, river: card };
 }

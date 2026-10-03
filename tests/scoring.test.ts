@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { analyzeFlopScenario } from '../src/poker/analyzer';
+import { analyzeScenario } from '../src/poker/analyzer';
 import { HandCategory } from '../src/poker/evaluator';
 import { getProbabilityRange } from '../src/trainer/ranges';
 import { scoreAnswer, updateTrainerStats } from '../src/trainer/scoring';
@@ -12,7 +12,7 @@ function emptyAnswer(): TrainerAnswer {
 
 describe('评分：高牌不参与作答', () => {
   // Hero 一对 A：高牌根本压不过一对，本就不该出现在正确答案里。
-  const pairAnalysis = analyzeFlopScenario(scenario('As Kd', 'Ah 8c 3d'));
+  const pairAnalysis = analyzeScenario(scenario('As Kd', 'Ah 8c 3d'));
 
   it('一对 A 场景的正确答案不包含高牌', () => {
     const score = scoreAnswer(emptyAnswer(), pairAnalysis);
@@ -20,7 +20,7 @@ describe('评分：高牌不参与作答', () => {
   });
 
   // Hero 高牌，且对手的高牌能压过 Hero。
-  const highCardAnalysis = analyzeFlopScenario(scenario('7d 2c', 'Ah Ks 8d'));
+  const highCardAnalysis = analyzeScenario(scenario('7d 2c', 'Ah Ks 8d'));
 
   it('前置条件：该场景 Hero 是高牌，且确实存在能压过的高牌组合', () => {
     expect(highCardAnalysis.heroHandValue.category).toBe(HandCategory.HighCard);
@@ -68,7 +68,7 @@ describe('评分：高牌不参与作答', () => {
 });
 
 describe('评分：Hero 是高牌时不要求答「同牌型」', () => {
-  const highCardAnalysis = analyzeFlopScenario(scenario('7d 2c', 'Ah Ks 8d'));
+  const highCardAnalysis = analyzeScenario(scenario('7d 2c', 'Ah Ks 8d'));
 
   it('前置条件：Hero 高牌，且确实存在同牌型组合', () => {
     expect(highCardAnalysis.sameCategory.category).toBe(HandCategory.HighCard);
@@ -82,7 +82,7 @@ describe('评分：Hero 是高牌时不要求答「同牌型」', () => {
   });
 
   it('Hero 是成牌时，仍然要求作答同牌型', () => {
-    const pairAnalysis = analyzeFlopScenario(scenario('As Kd', 'Ah 8c 3d'));
+    const pairAnalysis = analyzeScenario(scenario('As Kd', 'Ah 8c 3d'));
     const score = scoreAnswer(emptyAnswer(), pairAnalysis);
     expect(score.sameCategoryTotal).toBe(1);
   });
@@ -90,7 +90,7 @@ describe('评分：Hero 是高牌时不要求答「同牌型」', () => {
 
 describe('评分：统计累计', () => {
   it('完整答对时连续正确 +1', () => {
-    const analysis = analyzeFlopScenario(scenario('As Kd', 'Ah 8c 3d'));
+    const analysis = analyzeScenario(scenario('As Kd', 'Ah 8c 3d'));
     const answer = emptyAnswer();
     answer.selectedCategories = analysis.byCategory
       .filter((entry) => entry.aheadCount > 0)

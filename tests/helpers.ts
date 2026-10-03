@@ -1,5 +1,5 @@
 import { parseCards } from '../src/poker/cards';
-import type { Card, FlopScenario } from '../src/poker/cards';
+import type { Card, Scenario } from '../src/poker/cards';
 
 /** 把 "Ah Kd Qc 9s 7d" 解析为 Card[]。 */
 export function cards(input: string): Card[] {
@@ -18,6 +18,6 @@ export function tuple3(input: string): [Card, Card, Card] {
   return [parsed[0], parsed[1], parsed[2]];
 }
 
-export function scenario(hero: string, flop: string): FlopScenario {
+export function scenario(hero: string, flop: string): Scenario {
   return { hero: tuple2(hero), flop: tuple3(flop) };
 }

@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { analyzeFlopScenario, TOTAL_OPPONENT_COMBOS } from '../src/poker/analyzer';
+import { analyzeScenario, TOTAL_OPPONENT_COMBOS } from '../src/poker/analyzer';
 import {
   evaluateFiveCards,
   HandCategory,
   rankValueToLabel,
 } from '../src/poker/evaluator';
-import { generateRandomFlopScenario } from '../src/poker/randomScenario';
+import { generateRandomScenario } from '../src/poker/randomScenario';
 import { getRankGroup } from '../src/poker/grouping';
 import type { RankGroupAnalysis } from '../src/poker/analyzer';
 import type { HoleCards } from '../src/poker/combinations';
@@ -15,7 +15,7 @@ import { scenario } from './helpers';
 const FIXTURE = scenario('As Kd', 'Ah 8c 3d');
 
 describe('核心分析不变量', () => {
-  const analysis = analyzeFlopScenario(FIXTURE);
+  const analysis = analyzeScenario(FIXTURE);
 
   it('总组合数恒为 1081', () => {
     expect(analysis.totalOpponentCombos).toBe(TOTAL_OPPONENT_COMBOS);
@@ -117,7 +117,7 @@ describe('核心分析不变量', () => {
 
 describe('一对：同牌型内部同样把概率相同的点数合并成一行', () => {
   // Hero 是一对8；「同牌型」里要看清到底哪些对子能压过 Hero。
-  const analysis = analyzeFlopScenario(scenario('8s 7s', '8d Kc 2h'));
+  const analysis = analyzeScenario(scenario('8s 7s', '8d Kc 2h'));
   const aheadGroups = analysis.sameCategory.aheadGroups;
 
   it('Hero 确实是一对', () => {
@@ -183,7 +183,7 @@ describe('另一个场景的不变量（随机抽查）', () => {
 
   for (const s of scenarios) {
     it(`${s.hero[0].rank}${s.hero[1].rank} / ${s.flop.map((c) => c.rank).join('')}`, () => {
-      const analysis = analyzeFlopScenario(s);
+      const analysis = analyzeScenario(s);
       expect(analysis.aheadCount + analysis.tieCount + analysis.behindCount).toBe(
         TOTAL_OPPONENT_COMBOS,
       );
@@ -200,7 +200,7 @@ describe('另一个场景的不变量（随机抽查）', () => {
 
 describe('一对：把「能压过你的牌型」里概率相同的点数合成一行', () => {
   // Hero 高牌（Q♥7♠，翻牌 6♣K♣9♣），一对全部压过 Hero。
-  const analysis = analyzeFlopScenario(scenario('Qh 7s', '6c Kc 9c'));
+  const analysis = analyzeScenario(scenario('Qh 7s', '6c Kc 9c'));
   const pair = analysis.byCategory.find(
     (entry) => entry.category === HandCategory.OnePair,
   )!;
@@ -276,7 +276,7 @@ describe('一对：把「能压过你的牌型」里概率相同的点数合成�
 
 describe('同花：按高张分类', () => {
   // 三张公共牌同花色，同花只可能以这种方式出现。
-  const analysis = analyzeFlopScenario(scenario('2h 3d', 'Ks 9s 4s'));
+  const analysis = analyzeScenario(scenario('2h 3d', 'Ks 9s 4s'));
   const flush = analysis.byCategory.find(
     (entry) => entry.category === HandCategory.Flush,
   )!;
@@ -317,7 +317,7 @@ describe('同花：按高张分类', () => {
   });
 
   it('Hero 自己持同花时，同牌型的分组也用高张分类', () => {
-    const own = analyzeFlopScenario(scenario('8s 7s', 'Ts 5s 2s'));
+    const own = analyzeScenario(scenario('8s 7s', 'Ts 5s 2s'));
     expect(own.heroHandValue.category).toBe(HandCategory.Flush);
     const same = own.sameCategory;
     expect(same.category).toBe(HandCategory.Flush);
@@ -335,7 +335,7 @@ describe('翻牌圈限制：某些牌型根本不可能出现', () => {
   // Hero A♥T♦，翻牌 6♣ J♠ 4♠：
   // 公共牌点数 4 / 6 / J 跨度为 7，两张手牌无法凑出 5 张连牌；
   // 黑桃只有 2 张，也做不成同花。因此顺子 / 同花等全部不存在。
-  const analysis = analyzeFlopScenario(scenario('Ah Td', '6c Js 4s'));
+  const analysis = analyzeScenario(scenario('Ah Td', '6c Js 4s'));
 
   it('Hero 是局牌（高牌）', () => {
     expect(analysis.heroHandValue.category).toBe(HandCategory.HighCard);
@@ -370,7 +370,7 @@ describe('翻牌圈限制：某些牌型根本不可能出现', () => {
 });
 
 describe('其他牌型：概率相同的类型也合并成一行，行名保留成员', () => {
-  const analysis = analyzeFlopScenario(scenario('Ah 3h', '7c 5c 4c'));
+  const analysis = analyzeScenario(scenario('Ah 3h', '7c 5c 4c'));
   const entry = (category: HandCategory) =>
     analysis.byCategory.find((e) => e.category === category)!;
   const labels = (category: HandCategory) =>
@@ -416,7 +416,7 @@ describe('其他牌型：概率相同的类型也合并成一行，行名保留�
   });
 
   it('高牌也会合并（AK / AQ 概率相同）', () => {
-    const other = analyzeFlopScenario(scenario('Ah Td', '6c Js 4s'));
+    const other = analyzeScenario(scenario('Ah Td', '6c Js 4s'));
     const high = other.byCategory.find(
       (e) => e.category === HandCategory.HighCard,
     )!;
@@ -482,7 +482,7 @@ describe('合并不变量：每个合并行内的成员概率确实相同', () =
   it('随机 150 个场景的每个分组都满足', () => {
     const violations: string[] = [];
     for (let i = 0; i < 150; i += 1) {
-      const analysis = analyzeFlopScenario(generateRandomFlopScenario());
+      const analysis = analyzeScenario(generateRandomScenario());
       for (const entry of analysis.byCategory) {
         violations.push(
           ...violationsOf(

@@ -1,4 +1,4 @@
-import type { FlopAnalysis } from '../../poker/analyzer';
+import type { ScenarioAnalysis } from '../../poker/analyzer';
 import { HAND_CATEGORY_LABELS } from '../../poker/evaluator';
 import type { ScoreResult } from '../../trainer/scoring';
 import { ComboDetails } from '../ComboDetails';
@@ -6,7 +6,7 @@ import { CountBadge, Pct } from '../ProbabilityText';
 import { rangeLabel, Verdict } from './shared';
 
 interface SameCategoryPanelProps {
-  analysis: FlopAnalysis;
+  analysis: ScenarioAnalysis;
   /** 直接看答案（未作答）时为 null。 */
   score: ScoreResult | null;
   /** 本题是否要求判断同牌型（Hero 是高牌时跳过）。 */

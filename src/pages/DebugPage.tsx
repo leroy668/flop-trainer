@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import { analyzeFlopScenario } from '../poker/analyzer';
+import { analyzeScenario } from '../poker/analyzer';
 import type { Comparison } from '../poker/analyzer';
-import type { FlopScenario } from '../poker/cards';
+import type { Scenario } from '../poker/cards';
 import { parseCards, validateScenario } from '../poker/cards';
 import {
   ALL_HAND_CATEGORIES,
@@ -13,7 +13,7 @@ import { CardPair } from '../components/Card';
 import { formatPercent } from '../trainer/ranges';
 
 interface DebugScenario {
-  scenario: FlopScenario;
+  scenario: Scenario;
   error?: undefined;
 }
 interface DebugError {
@@ -21,15 +21,19 @@ interface DebugError {
   error: string;
 }
 
-function parseScenario(heroText: string, flopText: string): DebugScenario | DebugError {
+function parseScenario(heroText: string, boardText: string): DebugScenario | DebugError {
   try {
     const hero = parseCards(heroText);
-    const flop = parseCards(flopText);
+    const board = parseCards(boardText);
     if (hero.length !== 2) return { error: `Hero 需要 2 张牌，当前 ${hero.length} 张` };
-    if (flop.length !== 3) return { error: `Flop 需要 3 张牌，当前 ${flop.length} 张` };
-    const scenario: FlopScenario = {
+    if (board.length < 3 || board.length > 5) {
+      return { error: `公共牌需要 3~5 张，当前 ${board.length} 张` };
+    }
+    const scenario: Scenario = {
       hero: [hero[0], hero[1]],
-      flop: [flop[0], flop[1], flop[2]],
+      flop: [board[0], board[1], board[2]],
+      ...(board[3] ? { turn: board[3] } : {}),
+      ...(board[4] ? { river: board[4] } : {}),
     };
     validateScenario(scenario);
     return { scenario };
@@ -57,7 +61,7 @@ export function DebugPage() {
   );
 
   const analysis = useMemo(
-    () => (parsed.scenario ? analyzeFlopScenario(parsed.scenario) : null),
+    () => (parsed.scenario ? analyzeScenario(parsed.scenario) : null),
     [parsed],
   );
 
@@ -80,7 +84,7 @@ export function DebugPage() {
     <div className="page">
       <header className="page__header">
         <div>
-          <h1>调试页 · 1081 组合枚举</h1>
+          <h1>调试页 · 组合枚举</h1>
           <p className="muted">仅开发模式可见，用于验证算法。</p>
         </div>
       </header>
@@ -91,7 +95,7 @@ export function DebugPage() {
           <input value={heroText} onChange={(event) => setHeroText(event.target.value)} />
         </label>
         <label>
-          <span>Flop（3 张，如 Ah 8c 3d）</span>
+          <span>公共牌（3~5 张，如 Ah 8c 3d 7s 2c）</span>
           <input value={flopText} onChange={(event) => setFlopText(event.target.value)} />
         </label>
       </section>

@@ -1,8 +1,9 @@
 /**
  * 五张牌牌力评价。
  *
- * 翻牌圈一共只有 5 张牌（2 张底牌 + 3 张公共牌），
- * 因此第一版精确评价这 5 张牌，不做“7 选 5”。
+ * 翻牌圈只有 5 张牌（2 张底牌 + 3 张公共牌），直接评价；
+ * 转牌（6 张）与河牌（7 张）则是在 C(6,5)=6 / C(7,5)=21 个五张组合里取最大，
+ * 即 evaluateBestHand。
  */
 
 import type { Card, Rank } from './cards';
@@ -187,6 +188,65 @@ export function evaluateFiveCards(cards: readonly Card[]): HandValue {
   }
 
   return { category: HandCategory.HighCard, tiebreak: values };
+}
+
+export type HandValueComparison = -1 | 0 | 1;
+
+/**
+ * 比较两副牌的牌力：
+ *  1 = a 更大，0 = 完全平手，-1 = a 更小。
+ * 先比牌型，再逐位比较 tiebreak。
+ */
+export function compareHandValue(
+  a: HandValue,
+  b: HandValue,
+): HandValueComparison {
+  if (a.category !== b.category) return a.category > b.category ? 1 : -1;
+  const length = Math.max(a.tiebreak.length, b.tiebreak.length);
+  for (let i = 0; i < length; i += 1) {
+    const av = a.tiebreak[i] ?? 0;
+    const bv = b.tiebreak[i] ?? 0;
+    if (av !== bv) return av > bv ? 1 : -1;
+  }
+  return 0;
+}
+
+/**
+ * 评价 5~7 张牌里最强的 5 张。
+ *
+ * 转牌 / 河牌时牌力只可能随公共牌单调增强，所以「6 / 7 张里取最优五张」
+ * 与真实牌力完全一致：枚举所有五张子集（6 或 21 个）逐一评价取最大。
+ * 5 张时直接评价，不走组合枚举。
+ *
+ * @throws 若 cards.length 不在 5~7 之间
+ */
+export function evaluateBestHand(cards: readonly Card[]): HandValue {
+  if (cards.length < 5 || cards.length > 7) {
+    throw new Error(
+      `evaluateBestHand 需要 5~7 张牌，当前为 ${cards.length} 张`,
+    );
+  }
+  if (cards.length === 5) return evaluateFiveCards(cards);
+
+  const current: Card[] = [];
+  // 先用前 5 张做初值，再枚举其余子集取最大（6~7 张牌重复评价一次，代价可忽略）。
+  let best: HandValue = evaluateFiveCards(cards.slice(0, 5));
+
+  const walk = (start: number): void => {
+    if (current.length === 5) {
+      const value = evaluateFiveCards(current);
+      if (compareHandValue(value, best) > 0) best = value;
+      return;
+    }
+    for (let i = start; i < cards.length; i += 1) {
+      current.push(cards[i]);
+      walk(i + 1);
+      current.pop();
+    }
+  };
+  walk(0);
+
+  return best;
 }
 
 const RANK_NAMES: Record<number, string> = {

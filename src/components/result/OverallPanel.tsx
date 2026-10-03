@@ -1,9 +1,9 @@
-import type { FlopAnalysis } from '../../poker/analyzer';
+import type { ScenarioAnalysis } from '../../poker/analyzer';
 import { HAND_CATEGORY_LABELS } from '../../poker/evaluator';
 import { Pct } from '../ProbabilityText';
 
 interface OverallPanelProps {
-  analysis: FlopAnalysis;
+  analysis: ScenarioAnalysis;
 }
 
 /** 总体牌力：领先 / 平手 / 落后，以及领先牌型构成。 */

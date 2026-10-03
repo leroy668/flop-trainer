@@ -1,25 +1,57 @@
-import type { FlopScenario } from '../poker/cards';
+import type { Card as CardType, Scenario } from '../poker/cards';
+import { streetOf } from '../poker/cards';
 import { CardView } from './Card';
 
-export function Board({ scenario }: { scenario: FlopScenario }) {
+function EmptySlot() {
+  return <span className="card card--lg card--empty" aria-label="未发牌" />;
+}
+
+function BoardGroup({
+  label,
+  cards,
+  highlight = false,
+}: {
+  label: string;
+  cards: (CardType | undefined)[];
+  highlight?: boolean;
+}) {
+  return (
+    <div className={`board__group ${highlight ? 'board__group--new' : ''}`}>
+      <span className="board__label">{label}</span>
+      <div className="board__cards">
+        {cards.map((card, index) =>
+          card ? (
+            <CardView key={`${card.rank}${card.suit}`} card={card} size="lg" />
+          ) : (
+            <EmptySlot key={`empty-${label}-${index}`} />
+          ),
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 牌面：Hero 手牌 + 翻牌 + 转牌 + 河牌。
+ * 还没发的公共牌显示为空位，方便看清现在处于哪条街。
+ */
+export function Board({ scenario }: { scenario: Scenario }) {
+  const street = streetOf(scenario);
+
   return (
     <div className="board">
-      <div className="board__group">
-        <span className="board__label">你的手牌</span>
-        <div className="board__cards">
-          {scenario.hero.map((card) => (
-            <CardView key={`${card.rank}${card.suit}`} card={card} size="lg" />
-          ))}
-        </div>
-      </div>
-      <div className="board__group">
-        <span className="board__label">翻牌</span>
-        <div className="board__cards">
-          {scenario.flop.map((card) => (
-            <CardView key={`${card.rank}${card.suit}`} card={card} size="lg" />
-          ))}
-        </div>
-      </div>
+      <BoardGroup label="你的手牌" cards={[...scenario.hero]} />
+      <BoardGroup label="翻牌" cards={[...scenario.flop]} />
+      <BoardGroup
+        label="转牌"
+        cards={[scenario.turn]}
+        highlight={street === 'turn'}
+      />
+      <BoardGroup
+        label="河牌"
+        cards={[scenario.river]}
+        highlight={street === 'river'}
+      />
     </div>
   );
 }

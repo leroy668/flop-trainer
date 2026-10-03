@@ -139,16 +139,56 @@ export function parseCards(input: string): Card[] {
     .map(parseCard);
 }
 
-export interface FlopScenario {
+export interface Scenario {
   hero: [Card, Card];
   flop: [Card, Card, Card];
+  /** 转牌，发出后才有。 */
+  turn?: Card;
+  /** 河牌，发出后才有。 */
+  river?: Card;
 }
 
-/** 校验场景：必须恰好 5 张且互不重复。 */
-export function validateScenario(scenario: FlopScenario): void {
-  const cards = [...scenario.hero, ...scenario.flop];
-  if (cards.length !== 5) {
-    throw new Error(`场景必须恰好包含 5 张牌，当前为 ${cards.length} 张`);
+/** 当前处于哪一条街。 */
+export type Street = 'flop' | 'turn' | 'river';
+
+export const STREET_LABELS: Record<Street, string> = {
+  flop: '翻牌圈',
+  turn: '转牌圈',
+  river: '河牌圈',
+};
+
+/** 公共牌：翻牌 3 张 + 已发出的转牌 / 河牌。 */
+export function boardCards(scenario: Scenario): Card[] {
+  const board = [...scenario.flop];
+  if (scenario.turn) board.push(scenario.turn);
+  if (scenario.river) board.push(scenario.river);
+  return board;
+}
+
+/** Hero 两张底牌 + 全部公共牌，即已知的 5 / 6 / 7 张牌。 */
+export function knownCards(scenario: Scenario): Card[] {
+  return [...scenario.hero, ...boardCards(scenario)];
+}
+
+/** 按发牌进度判断当前处于哪条街。 */
+export function streetOf(scenario: Scenario): Street {
+  if (scenario.river) return 'river';
+  if (scenario.turn) return 'turn';
+  return 'flop';
+}
+
+/** 还要发几张公共牌（翻牌后 2 张、转牌后 1 张、河牌后 0 张）。 */
+export function remainingBoardCards(scenario: Scenario): number {
+  return 5 - boardCards(scenario).length;
+}
+
+/** 校验场景：2 张底牌 + 3~5 张公共牌，且互不重复。 */
+export function validateScenario(scenario: Scenario): void {
+  const cards = knownCards(scenario);
+  if (cards.length < 5 || cards.length > 7) {
+    throw new Error(
+      `场景需要 2 张底牌 + 3~5 张公共牌（共 5~7 张），当前为 ${cards.length} 张`,
+    );
   }
   const seen = new Set<string>();
   for (const card of cards) {
@@ -160,16 +200,13 @@ export function validateScenario(scenario: FlopScenario): void {
   }
 }
 
-/** 从 52 张牌中移除 Hero 两张 + Flop 三张，返回剩余 47 张。 */
-export function getRemainingDeck(scenario: FlopScenario): Card[] {
+/** 从 52 张牌中移除已知牌，返回剩余的 47 / 46 / 45 张。 */
+export function getRemainingDeck(scenario: Scenario): Card[] {
   validateScenario(scenario);
-  const used = new Set<string>([
-    ...scenario.hero.map(cardKey),
-    ...scenario.flop.map(cardKey),
-  ]);
+  const used = new Set<string>(knownCards(scenario).map(cardKey));
   return createDeck().filter((card) => !used.has(cardKey(card)));
 }
 
-export function scenarioToKey(scenario: FlopScenario): string {
-  return [...scenario.hero, ...scenario.flop].map(cardKey).join('');
+export function scenarioToKey(scenario: Scenario): string {
+  return knownCards(scenario).map(cardKey).join('');
 }

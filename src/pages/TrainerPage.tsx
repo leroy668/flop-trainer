@@ -3,15 +3,16 @@ import { Board } from '../components/Board';
 import { HandTypeSelector } from '../components/HandTypeSelector';
 import { ProbabilityRangeSelector } from '../components/ProbabilityRangeSelector';
 import { ResultBreakdown } from '../components/ResultBreakdown';
-import { analyzeFlopScenario } from '../poker/analyzer';
-import type { FlopScenario } from '../poker/cards';
+import { analyzeScenario } from '../poker/analyzer';
+import type { Scenario } from '../poker/cards';
+import { STREET_LABELS, streetOf } from '../poker/cards';
 import {
   describeHandValue,
   HAND_CATEGORY_LABELS,
   isTrainableCategory,
 } from '../poker/evaluator';
 import type { HandCategory } from '../poker/evaluator';
-import { generateRandomFlopScenario } from '../poker/randomScenario';
+import { dealNextStreet, generateRandomScenario } from '../poker/randomScenario';
 import { scoreAnswer, updateTrainerStats } from '../trainer/scoring';
 import type { ScoreResult } from '../trainer/scoring';
 import { formatPercent } from '../trainer/ranges';
@@ -44,8 +45,8 @@ const STEP_TEXT: Record<TrainerPhase, string> = {
 };
 
 export function TrainerPage() {
-  const [scenario, setScenario] = useState<FlopScenario>(() =>
-    generateRandomFlopScenario(),
+  const [scenario, setScenario] = useState<Scenario>(() =>
+    generateRandomScenario(),
   );
   const [phase, setPhase] = useState<TrainerPhase>('answer-categories');
   const [answer, setAnswer] = useState<TrainerAnswer>(freshAnswer);
@@ -62,7 +63,10 @@ export function TrainerPage() {
     }
   }, [revealMode]);
 
-  const analysis = useMemo(() => analyzeFlopScenario(scenario), [scenario]);
+  const analysis = useMemo(() => analyzeScenario(scenario), [scenario]);
+  const street = streetOf(scenario);
+  const totalOpponentCombos = analysis.totalOpponentCombos;
+  const nextStreetLabel = street === 'flop' ? '发转牌' : '发河牌';
 
   const sortedSelected = useMemo(
     () => [...answer.selectedCategories].sort((a, b) => a - b),
@@ -80,7 +84,15 @@ export function TrainerPage() {
   const totalSteps = sameCategoryAsked ? 3 : 2;
 
   const resetForNewHand = () => {
-    setScenario(generateRandomFlopScenario());
+    setScenario(generateRandomScenario());
+    setAnswer(freshAnswer());
+    setScore(null);
+    setPhase('answer-categories');
+  };
+
+  /** 发下一条街（翻牌 -> 转牌 -> 河牌），新的一圈就是新的一题。 */
+  const dealNext = () => {
+    setScenario((current) => dealNextStreet(current));
     setAnswer(freshAnswer());
     setScore(null);
     setPhase('answer-categories');
@@ -146,13 +158,37 @@ export function TrainerPage() {
       ? stats.sameCategoryRangeCorrect / stats.sameCategoryRangeTotal
       : 0;
 
+  /** 结果页（含直接看答案）底部的操作：发下一条街 / 换一手牌。 */
+  const streetActions = (
+    <div className="actions actions--sticky">
+      {street !== 'river' && (
+        <button type="button" className="button" onClick={dealNext}>
+          {nextStreetLabel} ▶
+        </button>
+      )}
+      <button
+        type="button"
+        className={`button ${street === 'river' ? '' : 'button--ghost'}`}
+        onClick={resetForNewHand}
+      >
+        下一题
+      </button>
+      <span className="muted small">
+        {street === 'river'
+          ? '河牌已发完，换一手新牌'
+          : `${nextStreetLabel}后按新牌面重新出题`}
+      </span>
+    </div>
+  );
+
   return (
     <div className="page">
       <header className="page__header">
         <div>
-          <h1>翻牌圈相对牌力训练器</h1>
+          <h1>德州扑克相对牌力训练器</h1>
           <p className="muted">
-            对手从剩余 47 张未知牌中随机获得 2 张，共 1081 个等权组合。
+            {STREET_LABELS[street]}：对手从剩余 {analysis.remainingCount}{' '}
+            张未知牌中随机获得 2 张，共 {totalOpponentCombos} 个等权组合。
           </p>
         </div>
         <div className="page__header-actions">
@@ -208,7 +244,14 @@ export function TrainerPage() {
       <section className="panel">
         <Board scenario={scenario} />
         <p className="hero-type">
+          <span className="street-badge">{STREET_LABELS[street]}</span>
           当前牌型：<strong>{describeHandValue(analysis.heroHandValue)}</strong>
+          <span className="muted small">
+            （{analysis.remainingBoardCards > 0
+              ? `还剩 ${analysis.remainingBoardCards} 张公共牌`
+              : '公共牌已发完'}
+            ）
+          </span>
         </p>
       </section>
 
@@ -218,11 +261,7 @@ export function TrainerPage() {
             直接看答案模式：已跳过牌型选择与概率估计，不计入统计。
           </p>
           <ResultBreakdown analysis={analysis} score={null} answer={answer} />
-          <div className="actions actions--sticky">
-            <button type="button" className="button" onClick={resetForNewHand}>
-              下一题
-            </button>
-          </div>
+          {streetActions}
         </>
       ) : (
         <>
@@ -270,7 +309,7 @@ export function TrainerPage() {
         <section className="panel">
           <h2>这些牌型能压过你的概率大约是多少？</h2>
           <p className="muted">
-            概率 = 该牌型领先组合数 / 1081，即「占全部随机两张手牌」的概率。
+            概率 = 该牌型领先组合数 / {totalOpponentCombos}，即「占全部随机两张手牌」的概率。
           </p>
           {sortedSelected.map((category) => (
             <div className="category-block" key={category}>
@@ -307,7 +346,7 @@ export function TrainerPage() {
           </h2>
           <p className="muted">
             这里使用条件概率：同牌型中比你大的组合数 / 所有同牌型组合数，
-            不是占 1081 的比例。
+            不是占 {totalOpponentCombos} 的比例。
           </p>
           <ProbabilityRangeSelector
             name="same-category"
@@ -333,11 +372,7 @@ export function TrainerPage() {
       {phase === 'result' && score && (
         <>
           <ResultBreakdown analysis={analysis} score={score} answer={answer} />
-          <div className="actions actions--sticky">
-            <button type="button" className="button" onClick={resetForNewHand}>
-              下一题
-            </button>
-          </div>
+          {streetActions}
         </>
       )}
         </>

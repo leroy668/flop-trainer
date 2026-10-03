@@ -1,24 +1,37 @@
 /**
- * 后续听牌（draw）分析：转牌 / 河牌把「听牌」补成成牌的概率。
+ * 后续听牌（draw）分析：还没发出的公共牌把「听牌」补成成牌的概率。
  *
- * 口径（全部由 47 张未知牌枚举推导，没有任何硬编码数字）：
+ * 口径（全部由剩余未知牌枚举推导，没有任何硬编码数字）：
  *
  * - 听牌目标只考虑两种「靠公共牌补成的成牌」：顺子、同花。
- * - 已知 5 张牌（Hero 2 + 翻牌 3，或对手 2 + 翻牌 3）里还没有目标牌型时：
- *     · 转牌：47（Hero）/ 45（对手，扣掉他自己 2 张）张里能直接补成目标的牌
- *       = 补牌（outs）。
- *     · 到河牌：池中任取 2 张（Hero C(47,2)=1081 / 对手 C(45,2)=990）视为等权
- *       后续，只要最终 7 张里出现目标牌型就算「补成」。
- *       因为牌力只可能随公共牌单调增强，所以「转牌补成」的路径同样计入。
- *     · 转牌无补牌、但两张后续牌能补成 → 后门听牌（backdoor）。
+ * - 已知牌（翻牌 5 张 / 转牌 6 张 / 河牌 7 张）里还没有目标牌型时：
+ *     · 下一张牌：Hero 47 / 46 张（对手 45 / 44 张，扣掉他自己 2 张）
+ *       里能直接补成目标的牌 = 补牌（outs）。
+ *     · 发完为止：从池中取完剩余公共牌（翻牌后 2 张：C(47,2)=1081 /
+ *       C(45,2)=990；转牌后 1 张：46 / 44）视为等权后续，
+ *       只要最终出现目标牌型就算「补成」。
+ *       因为牌力只可能随公共牌单调增强，所以「下一张就补成」的路径同样计入。
+ *     · 下一张无补牌、但后面两张能补成 → 后门听牌（backdoor，只在翻牌后成立）。
+ *     · 河牌已发完 → 没有后续牌，不存在听牌。
  * - 已经成型的牌型不算听牌（例如已有同花就不算「同花听牌」），
- *   成型判断直接看 5 张牌的花色张数 / 顺子掩码，而不是看牌型大小，
+ *   成型判断直接看已知牌的花色张数 / 顺子掩码，而不是看牌型大小，
  *   因为葫芦、四条并不包含同花。
+ *
+ * 注意：转牌 / 河牌时已知牌有 6~7 张，此时「翻牌时的短板」可能已经被补上，
+ * 目标集合与补牌数会随牌面变化，所以每一手牌都重新算。
  */
 
-import type { Card, FlopScenario, Rank, Suit } from './cards';
-import { getRemainingDeck, RANK_VALUES, SUIT_SYMBOLS } from './cards';
-import { enumerateOpponentHands } from './combinations';
+import type { Card, Rank, Scenario, Street, Suit } from './cards';
+import {
+  boardCards,
+  getRemainingDeck,
+  knownCards,
+  RANK_VALUES,
+  remainingBoardCards,
+  streetOf,
+  SUIT_SYMBOLS,
+} from './cards';
+import { enumerateOpponentHands, pairCount } from './combinations';
 import { HandCategory } from './evaluator';
 
 /** 听牌目标：目前支持顺子与同花两种。 */
@@ -59,14 +72,16 @@ function isFlushCounts(c0: number, c1: number, c2: number, c3: number): boolean 
 }
 
 export interface DrawCompletion {
-  /** 转牌就能补成的牌，即补牌（outs）。 */
+  /** 下一张公共牌就能补成的牌，即补牌（outs）。 */
   outs: Card[];
-  turnCount: number;
-  turnTotal: number;
-  turnProbability: number;
-  riverCount: number;
-  riverTotal: number;
-  riverProbability: number;
+  /** 下一张公共牌（转牌 / 河牌）就能补成：补牌数 / 未知牌池张数。 */
+  nextCount: number;
+  nextTotal: number;
+  nextProbability: number;
+  /** 剩余公共牌全部发完前补成：组合数 / 等权后续总数。 */
+  finalCount: number;
+  finalTotal: number;
+  finalProbability: number;
 }
 
 /**
@@ -77,13 +92,15 @@ export interface DrawCompletion {
  * - 5 张已知牌里最多只有一个花色能达到 3 张（否则需要 6 张牌），
  *   因此同花只可能由这个「同花候选花色」补成，只需数这个花色还差几张。
  *
- * @param base 已知 5 张牌
- * @param pool 后续未知牌池（Hero 47 张 / 对手 45 张）
+ * @param base 已知牌（翻牌 5 张 / 转牌 6 张）
+ * @param pool 后续未知牌池（Hero 47 / 46 张，对手 45 / 44 张）
+ * @param remainingBoard 还要发几张公共牌（2 或 1）
  */
 function countCompletions(
   base: readonly Card[],
   pool: readonly Card[],
   targets: readonly DrawTarget[],
+  remainingBoard: number,
 ): { perTarget: DrawCompletion[]; union: DrawCompletion } {
   let baseMask = 0;
   const baseCounts = [0, 0, 0, 0];
@@ -114,61 +131,70 @@ function countCompletions(
     }
   }
 
-  const turnTotal = n;
-  const riverTotal = (n * (n - 1)) / 2;
-  const turnCounts = targets.map(() => 0);
-  const riverCounts = targets.map(() => 0);
+  const nextTotal = n;
+  // 只发一张（转牌后）时，「发完」与「下一张」是同一批牌。
+  const finalTotal = remainingBoard >= 2 ? pairCount(n) : n;
+  const nextCounts = targets.map(() => 0);
+  const finalCounts = targets.map(() => 0);
   const outs: Card[][] = targets.map(() => []);
-  let unionTurn = 0;
-  let unionRiver = 0;
+  let unionNext = 0;
+  let unionFinal = 0;
   const unionOuts: Card[] = [];
 
   for (let i = 0; i < n; i += 1) {
     const sOk = trackStraight && STRAIGHT_MASK_TABLE[baseMask | rankBits[i]];
     const fOk = trackFlush && flushByOne && flushCard[i] === 1;
     if (sOk) {
-      turnCounts[straightIdx] += 1;
+      nextCounts[straightIdx] += 1;
       outs[straightIdx].push(pool[i]);
     }
     if (fOk) {
-      turnCounts[flushIdx] += 1;
+      nextCounts[flushIdx] += 1;
       outs[flushIdx].push(pool[i]);
     }
     if (sOk || fOk) {
-      unionTurn += 1;
+      unionNext += 1;
       unionOuts.push(pool[i]);
     }
   }
 
-  for (let i = 0; i < n; i += 1) {
-    const maskI = baseMask | rankBits[i];
-    const fi = flushCard[i] === 1;
-    for (let j = i + 1; j < n; j += 1) {
-      const sOk = trackStraight && STRAIGHT_MASK_TABLE[maskI | rankBits[j]];
-      const fOk =
-        trackFlush &&
-        (flushByOne ? fi || flushCard[j] === 1 : fi && flushCard[j] === 1);
-      if (sOk) riverCounts[straightIdx] += 1;
-      if (fOk) riverCounts[flushIdx] += 1;
-      if (sOk || fOk) unionRiver += 1;
+  if (remainingBoard >= 2) {
+    for (let i = 0; i < n; i += 1) {
+      const maskI = baseMask | rankBits[i];
+      const fi = flushCard[i] === 1;
+      for (let j = i + 1; j < n; j += 1) {
+        const sOk = trackStraight && STRAIGHT_MASK_TABLE[maskI | rankBits[j]];
+        const fOk =
+          trackFlush &&
+          (flushByOne ? fi || flushCard[j] === 1 : fi && flushCard[j] === 1);
+        if (sOk) finalCounts[straightIdx] += 1;
+        if (fOk) finalCounts[flushIdx] += 1;
+        if (sOk || fOk) unionFinal += 1;
+      }
     }
+  } else {
+    // 只剩一张牌可发：「发完」就是「下一张」，逐目标拷一份即可。
+    unionFinal = unionNext;
+    targets.forEach((_, index) => {
+      finalCounts[index] = nextCounts[index];
+    });
   }
 
-  const make = (count: number, river: number, outCards: Card[]): DrawCompletion => ({
+  const make = (next: number, final: number, outCards: Card[]): DrawCompletion => ({
     outs: outCards,
-    turnCount: count,
-    turnTotal,
-    turnProbability: turnTotal === 0 ? 0 : count / turnTotal,
-    riverCount: river,
-    riverTotal,
-    riverProbability: riverTotal === 0 ? 0 : river / riverTotal,
+    nextCount: next,
+    nextTotal,
+    nextProbability: nextTotal === 0 ? 0 : next / nextTotal,
+    finalCount: final,
+    finalTotal,
+    finalProbability: finalTotal === 0 ? 0 : final / finalTotal,
   });
 
   return {
     perTarget: targets.map((_, index) =>
-      make(turnCounts[index], riverCounts[index], outs[index]),
+      make(nextCounts[index], finalCounts[index], outs[index]),
     ),
-    union: make(unionTurn, unionRiver, unionOuts),
+    union: make(unionNext, unionFinal, unionOuts),
   };
 }
 
@@ -201,9 +227,10 @@ export const DRAW_KIND_LABELS: Record<DrawKind, string> = {
   'straight-multi': '顺子听牌（多卡口）',
 };
 
+/** 后门听牌：下一张牌无补牌，但后面两张能补成。 */
 interface BaseDraw {
   target: DrawTarget;
-  /** 转牌无补牌，必须连来两张。 */
+  /** 下一张牌没有补牌，必须连来两张。 */
   backdoor: boolean;
   /** 补牌点数（去重，从大到小），同花听牌为空数组。 */
   outRanks: number[];
@@ -214,8 +241,10 @@ interface BaseDraw {
 }
 
 interface BaseDrawAnalysis {
-  turnTotal: number;
-  riverTotal: number;
+  /** 还要发几张公共牌。 */
+  remainingBoardCards: number;
+  nextTotal: number;
+  finalTotal: number;
   draws: BaseDraw[];
   union: DrawCompletion;
 }
@@ -223,16 +252,17 @@ interface BaseDrawAnalysis {
 function analyzeBase(
   base: readonly Card[],
   pool: readonly Card[],
+  remainingBoard: number,
 ): BaseDrawAnalysis {
   const made = madeTargets(base);
   const targets = DRAW_TARGETS.filter((target) => !made.has(target));
-  const counts = countCompletions(base, pool, targets);
+  const counts = countCompletions(base, pool, targets, remainingBoard);
 
   const draws: BaseDraw[] = [];
   targets.forEach((target, index) => {
     const completion = counts.perTarget[index];
-    // 到河牌都补不成 → 不是听牌。
-    if (completion.riverCount === 0) return;
+    // 发完都补不成 → 不是听牌。
+    if (completion.finalCount === 0) return;
 
     const outRanks = [
       ...new Set(completion.outs.map((card) => RANK_VALUES[card.rank])),
@@ -257,7 +287,7 @@ function analyzeBase(
 
     draws.push({
       target,
-      backdoor: completion.turnCount === 0,
+      backdoor: remainingBoard >= 2 && completion.nextCount === 0,
       outRanks,
       flushSuit,
       kind,
@@ -266,8 +296,9 @@ function analyzeBase(
   });
 
   return {
-    turnTotal: pool.length,
-    riverTotal: (pool.length * (pool.length - 1)) / 2,
+    remainingBoardCards: remainingBoard,
+    nextTotal: pool.length,
+    finalTotal: remainingBoard >= 2 ? pairCount(pool.length) : pool.length,
     draws,
     union: counts.union,
   };
@@ -283,10 +314,14 @@ export interface HeroDrawRow {
 }
 
 export interface HeroDrawAnalysis {
-  /** 转牌（Hero 为 47 张）。 */
-  turnTotal: number;
-  /** 转牌 + 河牌的组合数（Hero 为 C(47,2) = 1081）。 */
-  riverTotal: number;
+  /** 还要发几张公共牌（2 / 1 / 0）。 */
+  remainingBoardCards: number;
+  /** 河牌已发完 → 不存在后续听牌。 */
+  finished: boolean;
+  /** 下一张牌的总张数（Hero 翻牌 47 / 转牌 46）。 */
+  nextTotal: number;
+  /** 发完为止的等权后续总数（Hero 翻牌 C(47,2)=1081 / 转牌 46）。 */
+  finalTotal: number;
   /** 立即听牌在前、后门听牌在后，同类按补牌数从多到少。 */
   rows: HeroDrawRow[];
   immediateCount: number;
@@ -317,10 +352,15 @@ function heroRow(draw: BaseDraw): HeroDrawRow {
   };
 }
 
-export function analyzeHeroDraws(scenario: FlopScenario): HeroDrawAnalysis {
-  const base = [...scenario.hero, ...scenario.flop];
+export function analyzeHeroDraws(scenario: Scenario): HeroDrawAnalysis {
+  const base = knownCards(scenario);
   const pool = getRemainingDeck(scenario);
-  const { draws, union, turnTotal, riverTotal } = analyzeBase(base, pool);
+  const remainingBoard = remainingBoardCards(scenario);
+  const { draws, union, nextTotal, finalTotal } = analyzeBase(
+    base,
+    pool,
+    remainingBoard,
+  );
 
   const rows = draws
     .map(heroRow)
@@ -329,12 +369,14 @@ export function analyzeHeroDraws(scenario: FlopScenario): HeroDrawAnalysis {
       if (a.completion.outs.length !== b.completion.outs.length) {
         return b.completion.outs.length - a.completion.outs.length;
       }
-      return b.completion.riverProbability - a.completion.riverProbability;
+      return b.completion.finalProbability - a.completion.finalProbability;
     });
 
   return {
-    turnTotal,
-    riverTotal,
+    remainingBoardCards: remainingBoard,
+    finished: remainingBoard === 0,
+    nextTotal,
+    finalTotal,
     rows,
     immediateCount: rows.filter((row) => !row.backdoor).length,
     backdoorCount: rows.filter((row) => row.backdoor).length,
@@ -351,19 +393,25 @@ export interface OpponentDrawRow {
   comboCount: number;
   /** comboCount / 总组合数。 */
   probability: number;
-  /** 该类组合在转牌补成的平均概率。 */
-  averageTurnProbability: number;
-  /** 该类组合到河牌补成的平均概率。 */
-  averageRiverProbability: number;
-  /** 拿到该类听牌并且到河牌真的补成的概率（占全部组合）。 */
-  jointRiverProbability: number;
+  /** 该类组合在下一张牌补成的平均概率。 */
+  averageNextProbability: number;
+  /** 该类组合在发完前补成的平均概率。 */
+  averageFinalProbability: number;
+  /** 拿到该类听牌并且真的补成的概率（占全部组合）。 */
+  jointFinalProbability: number;
 }
 
 export interface OpponentDrawAnalysis {
   totalCombos: number;
-  turnTotal: number;
-  riverTotal: number;
-  /** 至少有一种立即听牌（转牌有补牌）的组合数。 */
+  /** 还要发几张公共牌（2 / 1 / 0）。 */
+  remainingBoardCards: number;
+  /** 河牌已发完 → 不存在后续听牌。 */
+  finished: boolean;
+  /** 对手拿走后剩余牌数（45 / 44 / 43）。 */
+  nextTotal: number;
+  /** 发完为止的等权后续总数（翻牌 C(45,2)=990 / 转牌 44）。 */
+  finalTotal: number;
+  /** 至少有一种立即听牌（下一张牌有补牌）的组合数。 */
   immediateCombos: number;
   /** 没有立即听牌、只有后门听牌的组合数。 */
   backdoorOnlyCombos: number;
@@ -382,28 +430,29 @@ export interface OpponentDrawAnalysis {
 
 interface Accumulator {
   comboCount: number;
-  turnSum: number;
-  riverSum: number;
+  nextSum: number;
+  finalSum: number;
 }
 
 export function analyzeOpponentDraws(
-  scenario: FlopScenario,
+  scenario: Scenario,
 ): OpponentDrawAnalysis {
+  const board = boardCards(scenario);
+  const remainingBoard = remainingBoardCards(scenario);
   const remaining = getRemainingDeck(scenario);
   const hands = enumerateOpponentHands(remaining);
   const totalCombos = hands.length;
-  const flop = scenario.flop;
 
   const byKind = new Map<DrawKind, Accumulator>();
   // 对手拿走后牌池固定少 2 张，所以后续总量对所有组合都一样。
-  const turnTotal = remaining.length - 2;
-  const riverTotal = (turnTotal * (turnTotal - 1)) / 2;
+  const nextTotal = remaining.length - 2;
+  const finalTotal = remainingBoard >= 2 ? pairCount(nextTotal) : nextTotal;
   let immediateCombos = 0;
   let backdoorOnlyCombos = 0;
   let drawingCombos = 0;
-  let unionRiverSum = 0;
+  let unionFinalSum = 0;
   let backdoorComboCount = 0;
-  let backdoorRiverSum = 0;
+  let backdoorFinalSum = 0;
 
   for (const hand of hands) {
     const pool = remaining.filter(
@@ -411,12 +460,12 @@ export function analyzeOpponentDraws(
         !(card.rank === hand[0].rank && card.suit === hand[0].suit) &&
         !(card.rank === hand[1].rank && card.suit === hand[1].suit),
     );
-    const base = [hand[0], hand[1], flop[0], flop[1], flop[2]];
-    const { draws, union } = analyzeBase(base, pool);
+    const base = [...hand, ...board];
+    const { draws, union } = analyzeBase(base, pool, remainingBoard);
     if (draws.length === 0) continue;
 
     drawingCombos += 1;
-    unionRiverSum += union.riverProbability;
+    unionFinalSum += union.finalProbability;
 
     const immediate = draws.filter((draw) => !draw.backdoor);
     if (immediate.length > 0) {
@@ -424,18 +473,18 @@ export function analyzeOpponentDraws(
       for (const draw of immediate) {
         const acc = byKind.get(draw.kind) ?? {
           comboCount: 0,
-          turnSum: 0,
-          riverSum: 0,
+          nextSum: 0,
+          finalSum: 0,
         };
         acc.comboCount += 1;
-        acc.turnSum += draw.completion.turnProbability;
-        acc.riverSum += draw.completion.riverProbability;
+        acc.nextSum += draw.completion.nextProbability;
+        acc.finalSum += draw.completion.finalProbability;
         byKind.set(draw.kind, acc);
       }
     } else {
       backdoorOnlyCombos += 1;
       backdoorComboCount += 1;
-      backdoorRiverSum += union.riverProbability;
+      backdoorFinalSum += union.finalProbability;
     }
   }
 
@@ -445,9 +494,9 @@ export function analyzeOpponentDraws(
       label: DRAW_KIND_LABELS[kind],
       comboCount: acc.comboCount,
       probability: acc.comboCount / totalCombos,
-      averageTurnProbability: acc.turnSum / acc.comboCount,
-      averageRiverProbability: acc.riverSum / acc.comboCount,
-      jointRiverProbability: acc.riverSum / totalCombos,
+      averageNextProbability: acc.nextSum / acc.comboCount,
+      averageFinalProbability: acc.finalSum / acc.comboCount,
+      jointFinalProbability: acc.finalSum / totalCombos,
     }))
     .sort((a, b) => b.comboCount - a.comboCount);
 
@@ -459,23 +508,25 @@ export function analyzeOpponentDraws(
           label: '后门听牌（需连来两张）',
           comboCount: backdoorComboCount,
           probability: backdoorComboCount / totalCombos,
-          averageTurnProbability: 0,
-          averageRiverProbability: backdoorRiverSum / backdoorComboCount,
-          jointRiverProbability: backdoorRiverSum / totalCombos,
+          averageNextProbability: 0,
+          averageFinalProbability: backdoorFinalSum / backdoorComboCount,
+          jointFinalProbability: backdoorFinalSum / totalCombos,
         };
 
   return {
     totalCombos,
-    turnTotal,
-    riverTotal,
+    remainingBoardCards: remainingBoard,
+    finished: remainingBoard === 0,
+    nextTotal,
+    finalTotal,
     immediateCombos,
     backdoorOnlyCombos,
     noDrawCombos: totalCombos - immediateCombos - backdoorOnlyCombos,
     rows,
     backdoorRow,
-    completeProbability: unionRiverSum / totalCombos,
+    completeProbability: unionFinalSum / totalCombos,
     completeConditionalProbability:
-      drawingCombos === 0 ? 0 : unionRiverSum / drawingCombos,
+      drawingCombos === 0 ? 0 : unionFinalSum / drawingCombos,
     drawingCombos,
   };
 }
@@ -485,7 +536,48 @@ export interface DrawAnalysis {
   opponent: OpponentDrawAnalysis;
 }
 
-export function analyzeDraws(scenario: FlopScenario): DrawAnalysis {
+export function analyzeDraws(scenario: Scenario): DrawAnalysis {
+  // 河牌已经发完：没有后续公共牌，听牌概念不存在（也省掉一次全枚举）。
+  if (remainingBoardCards(scenario) === 0) {
+    const nextTotal = getRemainingDeck(scenario).length - 2;
+    const totalCombos = pairCount(nextTotal + 2);
+    return {
+      hero: {
+        remainingBoardCards: 0,
+        finished: true,
+        nextTotal: 0,
+        finalTotal: 0,
+        rows: [],
+        immediateCount: 0,
+        backdoorCount: 0,
+        union: {
+          outs: [],
+          nextCount: 0,
+          nextTotal: 0,
+          nextProbability: 0,
+          finalCount: 0,
+          finalTotal: 0,
+          finalProbability: 0,
+        },
+      },
+      opponent: {
+        totalCombos,
+        remainingBoardCards: 0,
+        finished: true,
+        nextTotal,
+        finalTotal: nextTotal,
+        immediateCombos: 0,
+        backdoorOnlyCombos: 0,
+        noDrawCombos: totalCombos,
+        rows: [],
+        backdoorRow: null,
+        completeProbability: 0,
+        completeConditionalProbability: 0,
+        drawingCombos: 0,
+      },
+    };
+  }
+
   return {
     hero: analyzeHeroDraws(scenario),
     opponent: analyzeOpponentDraws(scenario),
