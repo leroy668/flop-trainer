@@ -1,74 +1,217 @@
 /**
- * 冒烟测试：把 driver 注入 flop-trainer.html，用 headless Chrome 抓取渲染后的 DOM，
- * 验证“后续听牌”面板真的渲染出来了（数字由单元测试锁定）。
- * 用法：npm run build:single && node scripts/_smoke.mjs
+ * 冒烟测试：把 driver 注入 HTML，用 headless Chrome 跑起来，抓渲染后的 DOM。
+ *
+ * 选项：
+ *   <html 路径>          要冒烟的 HTML（默认 flop-trainer.html）
+ *   --answer=first|all   先自动答题再检查（first=只选第一个牌型，all=全选）
+ *   --tab=<序号>         只点开第 N 个选项卡（0 起算）
+ *   --shot=<png 路径>    截图而不是打 DOM（配合 --tab 用）
+ *   --size=WxH           视口大小（默认 1200x900，手机用 390x844）
+ *
+ * 例：
+ *   npm run build:single && node scripts/_smoke.mjs
+ *   node scripts/_smoke.mjs --answer=all
+ *   node scripts/_smoke.mjs --size=390x844 --tab=1 --shot="$TEMP/tabs.png"
  */
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
+const args = process.argv.slice(2);
+const option = (name) => {
+  const hit = args.find((arg) => arg.startsWith(`--${name}=`));
+  return hit ? hit.slice(name.length + 3) : null;
+};
+
+const answerMode = option('answer');
+const tabIndex = option('tab') === null ? null : Number(option('tab'));
+const shot = option('shot');
+const [winW, winH] = (option('size') ?? '1200x900').split('x');
 const root = path.resolve(import.meta.dirname, '..');
-// 可选第一个参数：指定要冒烟的 HTML 文件（默认用本地打包产物）。
-const input = process.argv[2] ?? path.join(root, 'flop-trainer.html');
+const input = args.find((arg) => !arg.startsWith('--')) ??
+  path.join(root, 'flop-trainer.html');
 const html = readFileSync(input, 'utf8');
 
 const driver = `
 <script>
 window.addEventListener('load', function () {
+  var ANSWER_MODE = ${JSON.stringify(answerMode)};
+  var TAB_INDEX = ${JSON.stringify(tabIndex)};
+  var txt = function (el) { return el ? el.innerText.replace(/\\s+/g, ' ').trim() : null; };
+  var marker = function (payload) {
+    var pre = document.createElement('pre');
+    pre.id = 'smoke-marker';
+    pre.textContent = JSON.stringify(payload, null, 2);
+    document.body.appendChild(pre);
+  };
+
   setTimeout(function () {
     var toggle = document.querySelector('.switch input');
-    if (toggle && !toggle.checked) toggle.click();
+    if (!ANSWER_MODE && toggle && !toggle.checked) toggle.click();
+    setTimeout(ANSWER_MODE ? autoAnswer : openTabs, ANSWER_MODE ? 250 : 700);
+  }, 300);
+
+  function openTabs() {
+    var tabs = document.querySelectorAll('.result-tab');
+    if (TAB_INDEX === null) {
+      walkTabs();
+      return;
+    }
+    if (tabs[TAB_INDEX]) tabs[TAB_INDEX].click();
     setTimeout(function () {
-      var panels = [].slice.call(document.querySelectorAll('section.panel'));
-      var drawPanel = panels.filter(function (p) {
-        var h = p.querySelector('h2');
-        return h && h.textContent.indexOf('后续听牌') >= 0;
-      })[0];
-      var txt = function (el) { return el ? el.innerText.replace(/\\s+/g, ' ').trim() : null; };
-      var pre = document.createElement('pre');
-      pre.id = 'smoke-marker';
-      pre.textContent = JSON.stringify({
-        heroCards: [].map.call(document.querySelectorAll('.board__group'), function (g) { return txt(g); }),
-        heroType: txt(document.querySelector('.hero-type')),
-        drawPanelTitle: txt(drawPanel ? drawPanel.querySelector('h2') : null),
-        heroRows: [].map.call(document.querySelectorAll('.draw'), function (el) { return txt(el); }),
-        partitions: drawPanel ? [].map.call(drawPanel.querySelectorAll('.overall-list__item'), function (el) { return txt(el); }) : [],
-        tableHead: txt(document.querySelector('.draw-table__head')),
-        tableRows: [].map.call(document.querySelectorAll('.draw-table__row'), function (el) { return txt(el); }),
-        summary: [].map.call(document.querySelectorAll('.draw-summary__row'), function (el) { return txt(el); }),
-        legend: txt(document.querySelector('.draw-tip')),
-        colors: {
-          turn: (function () { var e = document.querySelector('.draw__stat .pct--neutral'); return e ? getComputedStyle(e).color : null; })(),
-          river: (function () { var e = document.querySelector('.draw__stat .pct--danger'); return e ? getComputedStyle(e).color : null; })(),
-          joint: (function () { var e = document.querySelector('.draw-table__cell .pct--info'); return e ? getComputedStyle(e).color : null; })(),
-        },
-        panelCount: panels.length,
-      }, null, 2);
-      document.body.appendChild(pre);
-    }, 900);
-  }, 400);
+      marker({
+        mode: 'reveal',
+        viewport: [window.innerWidth, window.innerHeight],
+        tab: txt(tabs[TAB_INDEX]),
+        panelsRendered: document.querySelectorAll('.result .panel').length,
+        body: txt(document.querySelector('.app')),
+      });
+    }, 250);
+  }
+
+  // ---- 自动答题（只为了走到结果页，策略很粗糙）----
+  var ticks = 0;
+  var log = [];
+  function act(el, delay) {
+    log.push(el.innerText);
+    el.click();
+    setTimeout(autoAnswer, delay);
+  }
+
+  function autoAnswer() {
+    ticks += 1;
+    if (document.querySelector('.result-tabs')) {
+      setTimeout(TAB_INDEX === null ? walkTabs : openTabs, 250);
+      return;
+    }
+    if (ticks > 60) {
+      marker({ mode: ANSWER_MODE, stuck: true, log: log.slice(0, 40),
+        body: txt(document.body).slice(0, 700) });
+      return;
+    }
+    var heading = document.querySelector('.panel h2');
+    var text = heading ? heading.innerText : '';
+    if (text.indexOf('哪些牌型类别') >= 0) {
+      var chips = [].slice.call(document.querySelectorAll('.type-selector .chip'));
+      if (ANSWER_MODE === 'all') {
+        var pending = chips.filter(function (chip) {
+          return !chip.classList.contains('chip--selected') && !chip.disabled;
+        })[0];
+        if (pending) { act(pending, 60); return; }
+      } else if (!window.__pickedCategory) {
+        window.__pickedCategory = true;
+        var first = chips.filter(function (chip) { return !chip.disabled; })[0];
+        if (first) { act(first, 60); return; }
+      }
+    } else {
+      // 一个选项组一个选项组地填，避免在同一个组里反复改选绕圈。
+      var groups = [].slice.call(document.querySelectorAll('.range-selector'));
+      for (var g = 0; g < groups.length; g += 1) {
+        if (groups[g].querySelector('.chip--selected')) continue;
+        var option = groups[g].querySelector('.chip:not([disabled])');
+        if (option) { act(option, 60); return; }
+      }
+    }
+    // 只认作答区里的按钮，避免点到页头的「换一题」。
+    var button = [].slice.call(document.querySelectorAll('.actions .button'))
+      .filter(function (b) { return !b.disabled; })[0];
+    if (button) { act(button, 150); return; }
+    openTabs();
+  }
+
+  // ---- 依次点开每个选项卡，抓每块内容 ----
+  function walkTabs() {
+    var steps = [];
+    var index = 0;
+
+    function capture() {
+      var tab = document.querySelectorAll('.result-tab')[index - 1];
+      var panel = document.querySelector('.result-panel');
+      steps.push({
+        tab: tab ? txt(tab) : null,
+        activeTabs: document.querySelectorAll('.result-tab.is-active').length,
+        heading: txt(panel ? panel.querySelector('h2') : null),
+        panelsRendered: document.querySelectorAll('.result .panel').length,
+        answerLines: [].map.call(document.querySelectorAll('.result .answer-line'), txt),
+        sample: panel ? txt(panel).slice(0, 200) : null,
+        textLength: panel ? panel.innerText.length : 0,
+      });
+    }
+
+    function next() {
+      if (index > 0) capture();
+      var tabs = document.querySelectorAll('.result-tab');
+      if (index >= tabs.length) {
+        var bar = document.querySelector('.result-tabs');
+        marker({
+          mode: ANSWER_MODE || 'reveal',
+          viewport: [window.innerWidth, window.innerHeight],
+          scenario: txt(document.querySelector('.board')),
+          heroType: txt(document.querySelector('.hero-type')),
+          steps: steps,
+          tabBar: bar
+            ? {
+                height: Math.round(bar.getBoundingClientRect().height),
+                rows: [].map.call(tabs, function (el) {
+                  var r = el.getBoundingClientRect();
+                  return [Math.round(r.top), Math.round(r.width)];
+                }),
+              }
+            : null,
+          sticky: bar ? getComputedStyle(bar).position : null,
+          summary: txt(document.querySelector('.result-summary')),
+          flags: [].map.call(
+            document.querySelectorAll('.result-tab--ok, .result-tab--bad'),
+            function (el) {
+              return (el.classList.contains('result-tab--ok') ? 'ok' : 'bad') +
+                ':' + getComputedStyle(el).color;
+            },
+          ),
+        });
+        return;
+      }
+      tabs[index].click();
+      index += 1;
+      setTimeout(next, 200);
+    }
+
+    next();
+  }
 });
 </script>
 `;
 
-const injected = html.replace('<div id="root"></div>', `<div id="root"></div>${driver}`);
 const target = path.join(tmpdir(), `smoke-${Date.now()}.html`);
-writeFileSync(target, injected, 'utf8');
+writeFileSync(
+  target,
+  html.replace('<div id="root"></div>', `<div id="root"></div>${driver}`),
+  'utf8',
+);
 
 const chrome = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
-const dump = execFileSync(
-  chrome,
-  [
-    '--headless=new',
-    '--disable-gpu',
-    '--virtual-time-budget=20000',
-    '--allow-file-access-from-files',
-    '--dump-dom',
-    `file:///${target.replace(/\\/g, '/')}`,
-  ],
-  { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 },
-);
+const url = 'file:///' + target.split(path.sep).join('/');
+const chromeArgs = [
+  '--headless=new',
+  '--disable-gpu',
+  `--window-size=${winW},${winH}`,
+  '--virtual-time-budget=30000',
+  '--allow-file-access-from-files',
+];
+if (shot) {
+  chromeArgs.push(`--screenshot=${shot}`);
+}
+chromeArgs.push('--dump-dom', url);
+
+const dump = execFileSync(chrome, chromeArgs, {
+  encoding: 'utf8',
+  maxBuffer: 64 * 1024 * 1024,
+});
+
+if (shot) {
+  console.log(`screenshot: ${shot}`);
+  process.exit(0);
+}
 
 const match = dump.match(/<pre id="smoke-marker">([\s\S]*?)<\/pre>/);
 if (!match) {
@@ -76,9 +219,10 @@ if (!match) {
   console.log(dump.slice(-2000));
   process.exit(1);
 }
-const json = match[1]
-  .replace(/&amp;/g, '&')
-  .replace(/&lt;/g, '<')
-  .replace(/&gt;/g, '>')
-  .replace(/&quot;/g, '"');
-console.log(json);
+console.log(
+  match[1]
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"'),
+);
