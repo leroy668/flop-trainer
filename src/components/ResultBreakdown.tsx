@@ -1,13 +1,19 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { ScenarioAnalysis } from '../poker/analyzer';
+import { analyzeHeroDraws } from '../poker/draws';
 import { HAND_CATEGORY_LABELS, isTrainableCategory } from '../poker/evaluator';
+import { summarizeFiveCardHand } from '../poker/handType';
+import type { FiveCardSummary } from '../poker/handType';
 import { formatPercent } from '../trainer/ranges';
 import type { ScoreResult } from '../trainer/scoring';
 import type { TrainerAnswer } from '../trainer/types';
 import { DrawAnalysisPanel } from './DrawAnalysisPanel';
+import { HandOutlookPanel } from './HandOutlookPanel';
 import { BeatingPanel } from './result/BeatingPanel';
 import { OverallPanel } from './result/OverallPanel';
 import { SameCategoryPanel } from './result/SameCategoryPanel';
+
+type ResultTabId = 'overall' | 'beating' | 'same' | 'outlook';
 
 interface ResultBreakdownProps {
   analysis: ScenarioAnalysis;
@@ -15,8 +21,6 @@ interface ResultBreakdownProps {
   score: ScoreResult | null;
   answer: TrainerAnswer;
 }
-
-type ResultTabId = 'overall' | 'beating' | 'same' | 'draws';
 
 interface ResultTab {
   id: ResultTabId;
@@ -30,6 +34,17 @@ interface ResultTab {
   flag?: 'ok' | 'bad';
 }
 
+/** 选项卡上的摘要：牌型归类 + 听牌情况（后门听牌要单独说清楚）。 */
+function outlookHint(summary: FiveCardSummary): string {
+  const immediate = summary.draws.filter((draw) => !draw.backdoor).length;
+  const backdoor = summary.draws.length - immediate;
+  if (immediate === 0 && backdoor === 0) return `${summary.madeHand} · 无听牌`;
+  if (immediate === 0) return `${summary.madeHand} · 仅后门听牌 ${backdoor} 种`;
+  return backdoor === 0
+    ? `${summary.madeHand} · 听牌 ${immediate} 种`
+    : `${summary.madeHand} · 听牌 ${immediate} 种 · 后门 ${backdoor} 种`;
+}
+
 /**
  * 结果页。四块内容做成选项卡，一次只渲染一块，避免一路往下滚。
  * 每块在选项卡上带一个摘要数字（和作答对错标记）。
@@ -40,6 +55,17 @@ export function ResultBreakdown({
   answer,
 }: ResultBreakdownProps) {
   const [active, setActive] = useState<ResultTabId>('overall');
+
+  // 「当前 5 张牌是什么类型」很便宜（只评价一次 5 张牌），
+  // 结果页统一算一次，选项卡上就能直接显示；后续牌型分布则在面板里惰性计算。
+  const handSummary = useMemo(
+    () =>
+      summarizeFiveCardHand(
+        analysis.scenario,
+        analyzeHeroDraws(analysis.scenario),
+      ),
+    [analysis],
+  );
 
   const total = analysis.totalOpponentCombos;
   const beatingCategories = analysis.byCategory.filter(
@@ -88,26 +114,14 @@ export function ResultBreakdown({
           : undefined,
     },
     {
-      id: 'draws',
-      label:
-        analysis.remainingBoardCards >= 2
-          ? '后续听牌（转牌 / 河牌）'
-          : '后续听牌（河牌）',
-      short: '后续听牌',
-      hint:
-        analysis.remainingBoardCards >= 2
-          ? '顺子 / 同花能补成多少'
-          : '河牌能补成顺子 / 同花吗',
+      id: 'outlook',
+      label: '5 张牌分析',
+      short: '5 张牌',
+      hint: outlookHint(handSummary),
     },
   ];
 
-  // 河牌已经发完，没有后续牌可算，直接不显示听牌选项卡。
-  const visibleTabs =
-    analysis.remainingBoardCards === 0
-      ? tabs.filter((tab) => tab.id !== 'draws')
-      : tabs;
-
-  const current = visibleTabs.find((tab) => tab.id === active) ?? visibleTabs[0];
+  const current = tabs.find((tab) => tab.id === active) ?? tabs[0];
 
   return (
     <div className="result">
@@ -138,7 +152,7 @@ export function ResultBreakdown({
        * 这样不用额外实现方向键导航，屏幕阅读器也不会以为有隐藏面板。
        */}
       <div className="result-tabs" role="group" aria-label="结果分类">
-        {visibleTabs.map((tab) => (
+        {tabs.map((tab) => (
           <button
             key={tab.id}
             type="button"
@@ -180,8 +194,14 @@ export function ResultBreakdown({
             asked={sameCategoryAsked}
           />
         )}
-        {/* 听牌枚举放在这里，只有切换到该选项卡时才计算。 */}
-        {current.id === 'draws' && <DrawAnalysisPanel scenario={analysis.scenario} />}
+        {/* 当前 5 张牌的归类 + 最终牌型分布 + 听牌枚举都在这里，
+            只有切换到该选项卡时才计算（翻牌圈要枚举 1081 个后续）。 */}
+        {current.id === 'outlook' && (
+          <>
+            <HandOutlookPanel scenario={analysis.scenario} summary={handSummary} />
+            <DrawAnalysisPanel scenario={analysis.scenario} />
+          </>
+        )}
       </div>
     </div>
   );

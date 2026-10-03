@@ -11,7 +11,7 @@ import {
   validateScenario,
 } from '../src/poker/cards';
 import { compareHandValues } from '../src/poker/compare';
-import { analyzeDraws } from '../src/poker/draws';
+import { analyzeDraws, analyzeHeroDraws } from '../src/poker/draws';
 import {
   describeHandValue,
   evaluateBestHand,
@@ -252,6 +252,11 @@ describe('转牌 / 河牌圈的听牌', () => {
     const d = analyzeDraws(RIVER);
     expect(d.hero.finished).toBe(true);
     expect(d.hero.rows).toHaveLength(0);
+    // 直接调 analyzeHeroDraws 也不能报出听牌（河牌之后没有牌可发）。
+    const heroOnly = analyzeHeroDraws(RIVER);
+    expect(heroOnly.rows).toEqual([]);
+    expect(heroOnly.union.finalCount).toBe(0);
+    expect(heroOnly.union.nextCount).toBe(0);
     expect(d.opponent.finished).toBe(true);
     expect(d.opponent.totalCombos).toBe(990);
     expect(d.opponent.noDrawCombos).toBe(990);

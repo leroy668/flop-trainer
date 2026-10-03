@@ -254,6 +254,25 @@ function analyzeBase(
   pool: readonly Card[],
   remainingBoard: number,
 ): BaseDrawAnalysis {
+  // 河牌已经发完：没有后续公共牌，不应该把「下一张」当成还能补牌。
+  if (remainingBoard === 0) {
+    return {
+      remainingBoardCards: 0,
+      nextTotal: pool.length,
+      finalTotal: pool.length,
+      draws: [],
+      union: {
+        outs: [],
+        nextCount: 0,
+        nextTotal: 0,
+        nextProbability: 0,
+        finalCount: 0,
+        finalTotal: 0,
+        finalProbability: 0,
+      },
+    };
+  }
+
   const made = madeTargets(base);
   const targets = DRAW_TARGETS.filter((target) => !made.has(target));
   const counts = countCompletions(base, pool, targets, remainingBoard);

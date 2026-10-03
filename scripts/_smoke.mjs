@@ -238,6 +238,25 @@ window.addEventListener('load', function () {
           scenario: txt(document.querySelector('.board')),
           emptyBoards: document.querySelectorAll('.card--empty').length,
           heroType: txt(document.querySelector('.hero-type')),
+          handType: txt(document.querySelector('.hand-type__summary')),
+          handDetail: txt(document.querySelector('.hand-type__detail')),
+          outlookRows: [].map.call(
+            document.querySelectorAll('.outlook-row'),
+            txt,
+          ),
+          outlookSummary: txt(document.querySelector('.outlook-summary')),
+          docScroll: [document.documentElement.scrollWidth, window.innerWidth],
+          overflow: [].map.call(
+            document.querySelectorAll(
+              '.hand-type, .hand-type__draw, .outlook-list, .outlook-row,' +
+                ' .outlook-summary, .draw-table, .draw-table__row',
+            ),
+            function (el) {
+              return el.scrollWidth > el.clientWidth + 1 && el.clientWidth > 0
+                ? el.className + ':' + el.scrollWidth + '>' + el.clientWidth
+                : null;
+            },
+          ).filter(Boolean).slice(0, 12),
           steps: steps,
           tabLabels: [].map.call(tabs, txt),
           tabBar: bar
