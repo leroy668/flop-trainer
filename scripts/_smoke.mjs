@@ -9,7 +9,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '..');
-const html = readFileSync(path.join(root, 'flop-trainer.html'), 'utf8');
+// 可选第一个参数：指定要冒烟的 HTML 文件（默认用本地打包产物）。
+const input = process.argv[2] ?? path.join(root, 'flop-trainer.html');
+const html = readFileSync(input, 'utf8');
 
 const driver = `
 <script>
