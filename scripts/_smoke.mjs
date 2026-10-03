@@ -5,6 +5,8 @@
  *   <html 路径>          要冒烟的 HTML（默认 flop-trainer.html）
  *   --answer=first|all   先自动答题再检查（first=只选第一个牌型，all=全选）
  *   --deal=1|2           在结果页点「发转牌」/「发河牌」，1=到转牌圈，2=到河牌圈
+ *   --undo=1|2           发完牌后再点「↩ 回到…」收回上一街，1=退回一街，2=退回两街
+ *   --stop=1             发完牌后停在新一街的作答页，只抓答题态 DOM（查牌面下方的收回按钮）
  *   --tab=<序号>         只点开第 N 个选项卡（0 起算）
  *   --shot=<png 路径>    截图而不是打 DOM（配合 --tab 用）
  *   --size=WxH           视口大小（默认 1200x900，手机用 390x844）
@@ -13,6 +15,7 @@
  *   npm run build:single && node scripts/_smoke.mjs
  *   node scripts/_smoke.mjs --answer=all
  *   node scripts/_smoke.mjs --deal=1 --answer=all
+ *   node scripts/_smoke.mjs --deal=2 --undo=2 --answer=all   # 发到河牌再退回翻牌圈
  *   node scripts/_smoke.mjs --size=390x844 --tab=1 --shot="$TEMP/tabs.png"
  */
 import { execFileSync } from 'node:child_process';
@@ -28,6 +31,8 @@ const option = (name) => {
 
 const answerMode = option('answer');
 const deals = Number(option('deal') ?? 0);
+const undos = Number(option('undo') ?? 0);
+const stopAfterDeal = option('stop') === '1';
 const tabIndex = option('tab') === null ? null : Number(option('tab'));
 const shot = option('shot');
 const [winW, winH] = (option('size') ?? '1200x900').split('x');
@@ -42,6 +47,10 @@ window.addEventListener('load', function () {
   var ANSWER_MODE = ${JSON.stringify(answerMode)};
   var TAB_INDEX = ${JSON.stringify(tabIndex)};
   var DEALS_LEFT = ${JSON.stringify(Number.isFinite(deals) ? deals : 0)};
+  var UNDOS_LEFT = ${JSON.stringify(Number.isFinite(undos) ? undos : 0)};
+  var DEALS_TOTAL = DEALS_LEFT;
+  var UNDOS_DONE = 0;
+  var STOP_AFTER_DEAL = ${JSON.stringify(stopAfterDeal)};
   var TICK_LIMIT = 80 + DEALS_LEFT * 40;
   var txt = function (el) { return el ? el.innerText.replace(/\\s+/g, ' ').trim() : null; };
   var marker = function (payload) {
@@ -62,7 +71,12 @@ window.addEventListener('load', function () {
       .filter(function (b) { return b.innerText.indexOf('发') === 0; })[0] || null;
   }
 
-  /** 结果页就绪：先按需发下一条街，再遍历选项卡。 */
+  function undoButton() {
+    return [].slice.call(document.querySelectorAll('.actions--sticky .button'))
+      .filter(function (b) { return b.innerText.indexOf('↩') === 0; })[0] || null;
+  }
+
+  /** 结果页就绪：先按需发下一条街 / 收回上一街，再遍历选项卡。 */
   function reachedResult() {
     var deal = dealButton();
     if (DEALS_LEFT > 0 && deal) {
@@ -70,12 +84,55 @@ window.addEventListener('load', function () {
       deal.click();
       // 转牌 / 河牌要重新枚举一遍（990 个组合），多等一会儿。
       setTimeout(function () {
+        if (STOP_AFTER_DEAL && DEALS_LEFT === 0) { captureAnswering(); return; }
         if (ANSWER_MODE) autoAnswer(); else reachedResult();
       }, 900);
       return;
     }
+    var undo = undoButton();
+    if (UNDOS_LEFT > 0 && undo) {
+      UNDOS_LEFT -= 1;
+      UNDOS_DONE += 1;
+      undo.click();
+      setTimeout(reachedResult, 500);
+      return;
+    }
     if (TAB_INDEX === null) walkTabs();
     else openTabs();
+  }
+
+  /** 发完牌后不继续作答，只抓当前答题页的牌面与收回按钮。 */
+  function captureAnswering() {
+    var bar = document.querySelector('.street-undo .button');
+    if (UNDOS_LEFT > 0 && bar) {
+      UNDOS_LEFT -= 1;
+      UNDOS_DONE += 1;
+      log.push(txt(bar));
+      bar.click();
+      setTimeout(captureAnswering, 400);
+      return;
+    }
+    marker({
+      mode: 'answering',
+      viewport: [window.innerWidth, window.innerHeight],
+      street: txt(document.querySelector('.street-badge')),
+      header: txt(document.querySelector('.page__header p')),
+      scenario: txt(document.querySelector('.board')),
+      emptyBoards: document.querySelectorAll('.card--empty').length,
+      highlighted: [].map.call(
+        document.querySelectorAll('.board__group--new .board__label'),
+        txt,
+      ),
+      undone: UNDOS_DONE,
+      step: txt(document.querySelector('.steps__item.is-active')),
+      summary: txt(document.querySelector('.result-summary')),
+      undoBar: txt(document.querySelector('.street-undo')),
+      undoButtonInBoard: !!document.querySelector('.street-undo .button'),
+      undoButtons: [].map.call(
+        document.querySelectorAll('.street-undo .button, .actions--sticky .button'),
+        txt,
+      ),
+    });
   }
 
   function openTabs() {
@@ -174,6 +231,9 @@ window.addEventListener('load', function () {
           mode: ANSWER_MODE || 'reveal',
           viewport: [window.innerWidth, window.innerHeight],
           street: txt(document.querySelector('.street-badge')),
+          dealt: DEALS_TOTAL - DEALS_LEFT,
+          undone: UNDOS_DONE,
+          undoLabel: txt(undoButton()),
           header: txt(document.querySelector('.page__header p')),
           scenario: txt(document.querySelector('.board')),
           emptyBoards: document.querySelectorAll('.card--empty').length,

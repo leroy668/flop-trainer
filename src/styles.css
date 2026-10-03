@@ -330,6 +330,22 @@ h3 {
   box-shadow: none;
 }
 
+/* 收回上一街（退回到发牌之前） */
+.street-undo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed #e2e8f0;
+}
+
+.street-undo .button {
+  padding: 7px 14px;
+  font-size: 14px;
+}
+
 /* 当前处于哪一条街 */
 .street-badge {
   display: inline-flex;

@@ -4,8 +4,8 @@ import { HandTypeSelector } from '../components/HandTypeSelector';
 import { ProbabilityRangeSelector } from '../components/ProbabilityRangeSelector';
 import { ResultBreakdown } from '../components/ResultBreakdown';
 import { analyzeScenario } from '../poker/analyzer';
-import type { Scenario } from '../poker/cards';
-import { STREET_LABELS, streetOf } from '../poker/cards';
+import type { Scenario, Street } from '../poker/cards';
+import { STREET_CARD_LABELS, STREET_LABELS, streetOf } from '../poker/cards';
 import {
   describeHandValue,
   HAND_CATEGORY_LABELS,
@@ -15,6 +15,12 @@ import type { HandCategory } from '../poker/evaluator';
 import { dealNextStreet, generateRandomScenario } from '../poker/randomScenario';
 import { scoreAnswer, updateTrainerStats } from '../trainer/scoring';
 import type { ScoreResult } from '../trainer/scoring';
+import {
+  popStreetSnapshot,
+  previousStreetOf,
+  pushStreetSnapshot,
+} from '../trainer/streetHistory';
+import type { StreetSnapshot } from '../trainer/streetHistory';
 import { formatPercent } from '../trainer/ranges';
 import {
   EMPTY_TRAINER_STATS,
@@ -44,6 +50,8 @@ const STEP_TEXT: Record<TrainerPhase, string> = {
   result: '结果',
 };
 
+/** 发牌前的快照：收回上一街时连作答与结果一起恢复。 */
+
 export function TrainerPage() {
   const [scenario, setScenario] = useState<Scenario>(() =>
     generateRandomScenario(),
@@ -54,6 +62,10 @@ export function TrainerPage() {
   const [score, setScore] = useState<ScoreResult | null>(null);
   /** 开关打开时跳过作答，直接展示牌型结果。 */
   const [revealMode, setRevealMode] = useState<boolean>(readRevealMode);
+  /** 已经发出去的公共牌：每发一街压一份快照，可以逐街退回去。 */
+  const [dealtHistory, setDealtHistory] = useState<StreetSnapshot[]>([]);
+  /** 刚发下来的那条街（用于高亮），退回去或换题后清空。 */
+  const [justDealt, setJustDealt] = useState<Street | null>(null);
 
   useEffect(() => {
     try {
@@ -67,6 +79,7 @@ export function TrainerPage() {
   const street = streetOf(scenario);
   const totalOpponentCombos = analysis.totalOpponentCombos;
   const nextStreetLabel = street === 'flop' ? '发转牌' : '发河牌';
+  const cardLabel = STREET_CARD_LABELS[street];
 
   const sortedSelected = useMemo(
     () => [...answer.selectedCategories].sort((a, b) => a - b),
@@ -88,14 +101,34 @@ export function TrainerPage() {
     setAnswer(freshAnswer());
     setScore(null);
     setPhase('answer-categories');
+    setDealtHistory([]);
+    setJustDealt(null);
   };
 
   /** 发下一条街（翻牌 -> 转牌 -> 河牌），新的一圈就是新的一题。 */
   const dealNext = () => {
-    setScenario((current) => dealNextStreet(current));
+    if (street === 'river') return;
+    const nextScenario = dealNextStreet(scenario);
+    setDealtHistory((stack) =>
+      pushStreetSnapshot(stack, { scenario, phase, answer, score }),
+    );
+    setScenario(nextScenario);
     setAnswer(freshAnswer());
     setScore(null);
     setPhase('answer-categories');
+    setJustDealt(streetOf(nextScenario));
+  };
+
+  /** 收回最近发出的那条街，回到发牌之前（作答与结果一并恢复）。 */
+  const undoStreet = () => {
+    const popped = popStreetSnapshot(dealtHistory);
+    if (!popped) return;
+    setDealtHistory(popped.rest);
+    setScenario(popped.snapshot.scenario);
+    setAnswer(popped.snapshot.answer);
+    setScore(popped.snapshot.score);
+    setPhase(popped.snapshot.phase);
+    setJustDealt(null);
   };
 
   const submit = () => {
@@ -145,6 +178,24 @@ export function TrainerPage() {
     setAnswer((current) => ({ ...current, sameCategoryAheadRangeId: rangeId }));
   };
 
+  /** 「收回转牌 / 收回河牌」按钮：只在已经发过牌时出现。 */
+  const previousStreet = previousStreetOf(dealtHistory);
+  const previousStreetLabel =
+    previousStreet === null ? null : STREET_LABELS[previousStreet];
+  const previousCardLabel =
+    previousStreet === null ? null : STREET_CARD_LABELS[previousStreet];
+  const undoButton =
+    previousStreetLabel === null ? null : (
+      <button
+        type="button"
+        className="button button--ghost"
+        onClick={undoStreet}
+        title={`收回${cardLabel}，恢复${previousStreetLabel}的牌面、作答与结果`}
+      >
+        ↩ 回到{previousStreetLabel}
+      </button>
+    );
+
   const categoryAccuracy =
     stats.totalQuestions > 0
       ? stats.categoryPerfectCount / stats.totalQuestions
@@ -158,7 +209,7 @@ export function TrainerPage() {
       ? stats.sameCategoryRangeCorrect / stats.sameCategoryRangeTotal
       : 0;
 
-  /** 结果页（含直接看答案）底部的操作：发下一条街 / 换一手牌。 */
+  /** 结果页（含直接看答案）底部的操作：发下一条街 / 收回 / 换一手牌。 */
   const streetActions = (
     <div className="actions actions--sticky">
       {street !== 'river' && (
@@ -173,6 +224,7 @@ export function TrainerPage() {
       >
         下一题
       </button>
+      {undoButton}
       <span className="muted small">
         {street === 'river'
           ? '河牌已发完，换一手新牌'
@@ -242,7 +294,7 @@ export function TrainerPage() {
       </section>
 
       <section className="panel">
-        <Board scenario={scenario} />
+        <Board scenario={scenario} highlightStreet={justDealt} />
         <p className="hero-type">
           <span className="street-badge">{STREET_LABELS[street]}</span>
           当前牌型：<strong>{describeHandValue(analysis.heroHandValue)}</strong>
@@ -253,6 +305,14 @@ export function TrainerPage() {
             ）
           </span>
         </p>
+        {previousCardLabel !== null && !revealMode && phase !== 'result' && (
+          <div className="street-undo">
+            {undoButton}
+            <span className="muted small">
+              收回{cardLabel}，回到{previousCardLabel}继续
+            </span>
+          </div>
+        )}
       </section>
 
       {revealMode ? (

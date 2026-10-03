@@ -157,6 +157,13 @@ export const STREET_LABELS: Record<Street, string> = {
   river: '河牌圈',
 };
 
+/** 单张牌的说法，用在「收回转牌」「发河牌」这类动作上。 */
+export const STREET_CARD_LABELS: Record<Street, string> = {
+  flop: '翻牌',
+  turn: '转牌',
+  river: '河牌',
+};
+
 /** 公共牌：翻牌 3 张 + 已发出的转牌 / 河牌。 */
 export function boardCards(scenario: Scenario): Card[] {
   const board = [...scenario.flop];

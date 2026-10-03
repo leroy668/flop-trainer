@@ -1,5 +1,4 @@
-import type { Card as CardType, Scenario } from '../poker/cards';
-import { streetOf } from '../poker/cards';
+import type { Card as CardType, Scenario, Street } from '../poker/cards';
 import { CardView } from './Card';
 
 function EmptySlot() {
@@ -34,10 +33,15 @@ function BoardGroup({
 /**
  * 牌面：Hero 手牌 + 翻牌 + 转牌 + 河牌。
  * 还没发的公共牌显示为空位，方便看清现在处于哪条街。
+ * `highlightStreet` 是刚刚发下来的那条街（收回后会传 null）。
  */
-export function Board({ scenario }: { scenario: Scenario }) {
-  const street = streetOf(scenario);
-
+export function Board({
+  scenario,
+  highlightStreet = null,
+}: {
+  scenario: Scenario;
+  highlightStreet?: Street | null;
+}) {
   return (
     <div className="board">
       <BoardGroup label="你的手牌" cards={[...scenario.hero]} />
@@ -45,12 +49,12 @@ export function Board({ scenario }: { scenario: Scenario }) {
       <BoardGroup
         label="转牌"
         cards={[scenario.turn]}
-        highlight={street === 'turn'}
+        highlight={highlightStreet === 'turn'}
       />
       <BoardGroup
         label="河牌"
         cards={[scenario.river]}
-        highlight={street === 'river'}
+        highlight={highlightStreet === 'river'}
       />
     </div>
   );
