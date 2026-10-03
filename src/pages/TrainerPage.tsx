@@ -259,6 +259,9 @@ export function TrainerPage() {
           <Link className="button button--ghost" to="/flop-types">
             翻牌牌型图鉴
           </Link>
+          <Link className="button button--ghost" to="/board-textures">
+            牌面结构图鉴
+          </Link>
           <button
             type="button"
             className="button button--ghost"
