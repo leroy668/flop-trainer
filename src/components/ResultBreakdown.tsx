@@ -7,6 +7,7 @@ import type { ScoreResult } from '../trainer/scoring';
 import { getProbabilityRangeById } from '../trainer/ranges';
 import type { TrainerAnswer } from '../trainer/types';
 import { ComboDetails } from './ComboDetails';
+import { DrawAnalysisPanel } from './DrawAnalysisPanel';
 import { CountBadge, Pct } from './ProbabilityText';
 
 interface ResultBreakdownProps {
@@ -355,6 +356,8 @@ export function ResultBreakdown({
       {scored && answer.selectedCategories.length === 0 && (
         <p className="muted small">本题你未选择任何牌型。</p>
       )}
+
+      <DrawAnalysisPanel scenario={analysis.scenario} />
     </div>
   );
 }
