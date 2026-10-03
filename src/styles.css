@@ -1,0 +1,907 @@
+:root {
+  --bg: #0f172a;
+  --bg-soft: #1e293b;
+  --panel: #ffffff;
+  --panel-soft: #f1f5f9;
+  --text: #0f172a;
+  --muted: #64748b;
+  --accent: #2563eb;
+  --accent-soft: #dbeafe;
+  --green: #15803d;
+  --red: #dc2626;
+  --border: #e2e8f0;
+  --radius: 14px;
+  --shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: linear-gradient(180deg, #eef2f7 0%, #f8fafc 100%);
+  color: var(--text);
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.app {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 16px 16px 64px;
+}
+
+.topnav {
+  display: flex;
+  gap: 16px;
+  padding: 8px 4px 20px;
+}
+
+.topnav a {
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.topnav a:hover {
+  color: var(--accent);
+}
+
+.page__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.page__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+/* 直接看答案开关 */
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 14px;
+}
+
+.switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switch__track {
+  position: relative;
+  flex: none;
+  width: 42px;
+  height: 24px;
+  border-radius: 999px;
+  background: #cbd5e1;
+  transition: background 0.15s ease;
+}
+
+.switch__thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.35);
+  transition: transform 0.15s ease;
+}
+
+.switch input:checked + .switch__track {
+  background: #16a34a;
+}
+
+.switch input:checked + .switch__track .switch__thumb {
+  transform: translateX(18px);
+}
+
+.switch input:focus-visible + .switch__track {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.switch__label {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.reveal-note {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #047857;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+h1 {
+  font-size: 22px;
+  margin: 0 0 6px;
+}
+
+h2 {
+  font-size: 17px;
+  margin: 0 0 8px;
+}
+
+h3 {
+  font-size: 15px;
+  margin: 0 0 8px;
+}
+
+.muted {
+  color: var(--muted);
+  margin: 4px 0;
+}
+
+.small {
+  font-size: 13px;
+}
+
+.error {
+  color: var(--red);
+  font-weight: 600;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 18px;
+  margin-bottom: 16px;
+}
+
+/* Cards */
+.board {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 28px;
+}
+
+.board__group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.board__label {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.board__cards {
+  display: flex;
+  gap: 10px;
+}
+
+.card {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.12);
+}
+
+.card--sm {
+  width: 30px;
+  height: 42px;
+  font-size: 13px;
+  border-radius: 7px;
+  gap: 2px;
+}
+
+.card--md {
+  width: 44px;
+  height: 62px;
+  font-size: 17px;
+  gap: 3px;
+}
+
+.card--lg {
+  width: 58px;
+  height: 82px;
+  font-size: 22px;
+  gap: 4px;
+}
+
+.card--red {
+  color: var(--red);
+}
+
+.card--black {
+  color: #111827;
+}
+
+.card--hidden {
+  color: var(--muted);
+  background: repeating-linear-gradient(45deg, #e2e8f0, #e2e8f0 6px, #cbd5e1 6px, #cbd5e1 12px);
+}
+
+.card__suit {
+  font-size: 0.9em;
+}
+
+.card-pair {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.hero-type {
+  margin-top: 16px;
+  font-size: 15px;
+}
+
+/* Stats */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.stat {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stat__label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.stat strong {
+  font-size: 20px;
+}
+
+/* Steps */
+.steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.steps__item {
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--panel-soft);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.steps__item.is-active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+/* Chips */
+.type-selector,
+.range-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.chip {
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  border-radius: 999px;
+  padding: 9px 15px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.chip:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.chip--selected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Actions */
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.actions--sticky {
+  position: sticky;
+  bottom: 0;
+  background: rgba(248, 250, 252, 0.95);
+  padding: 12px 0;
+  backdrop-filter: blur(4px);
+}
+
+.button {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 11px 20px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.button:disabled {
+  background: #94a3b8;
+  cursor: not-allowed;
+}
+
+.button--ghost {
+  background: #fff;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+/* Results */
+.prob-bar {
+  display: flex;
+  height: 14px;
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 14px 0 16px;
+  background: var(--panel-soft);
+}
+
+.prob-bar__seg {
+  height: 100%;
+  transition: width 0.4s ease;
+}
+
+.prob-bar__seg--danger {
+  background: #dc2626;
+}
+
+.prob-bar__seg--tie {
+  background: #d97706;
+}
+
+.prob-bar__seg--safe {
+  background: #15803d;
+}
+
+.overall-list {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+  display: grid;
+  gap: 8px;
+}
+
+.overall-list__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--panel-soft);
+  border-left: 5px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+
+.overall-list__item--danger {
+  border-left-color: #dc2626;
+  background: #fef2f2;
+}
+
+.overall-list__item--stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.overall-list__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* 领先牌型构成 */
+.beating-summary {
+  display: grid;
+  gap: 6px;
+}
+
+.beating-summary__title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #b91c1c;
+  letter-spacing: 0.04em;
+}
+
+.beating-summary__hint {
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+
+.beating-summary__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.beating-summary__list li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid #fecaca;
+  border-radius: 9px;
+  padding: 7px 10px;
+}
+
+/* 「该牌型内能压过你的比例」：与红色「占全部」明显分开。 */
+.beating-summary__cond {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  padding-left: 10px;
+  border-left: 1px dashed #bfdbfe;
+  font-size: 12px;
+  color: #1d4ed8;
+}
+
+.beating-summary__label {
+  font-weight: 700;
+  font-size: 14px;
+  min-width: 42px;
+}
+
+.beating-summary__count {
+  flex: 1;
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.beating-summary__total {
+  background: #fee2e2 !important;
+  border-color: #fca5a5 !important;
+}
+
+/* 误判牌型的解释 */
+.extra-categories {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.extra-categories li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.extra-categories__name {
+  font-weight: 700;
+  min-width: 42px;
+}
+
+.overall-list__item--tie {
+  border-left-color: #d97706;
+  background: #fffbeb;
+}
+
+.overall-list__item--safe {
+  border-left-color: #15803d;
+  background: #f0fdf4;
+}
+
+.overall-list__label {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.overall-list__value {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.overall-list__count {
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 醒目的百分比数字 */
+.pct {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.pct--lg {
+  font-size: 26px;
+  line-height: 1.1;
+  padding: 3px 12px;
+  border-radius: 10px;
+}
+
+.pct--md {
+  font-size: 16px;
+  padding: 1px 8px;
+  border-radius: 8px;
+}
+
+.pct--danger {
+  color: #b91c1c;
+  background: #fee2e2;
+}
+
+.pct--tie {
+  color: #b45309;
+  background: #fef3c7;
+}
+
+.pct--safe {
+  color: #15803d;
+  background: #dcfce7;
+}
+
+.pct--neutral {
+  color: #1d4ed8;
+  background: #dbeafe;
+}
+
+/* 「单个占全部」专用色：与「合计占全部」的红色、占同牌型的蓝色都区分开。 */
+.pct--info {
+  color: #6d28d9;
+  background: #ede9fe;
+}
+
+.count-badge {
+  font-size: 13px;
+  color: var(--muted);
+  background: var(--panel-soft);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.category-block {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  margin: 12px 0;
+}
+
+.category-block--warn {
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+
+.category-block__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.category-block__numbers {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.answer-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 14px;
+  margin: 8px 0;
+}
+
+.verdict {
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.verdict--ok {
+  color: var(--green);
+}
+
+.verdict--bad {
+  color: var(--red);
+}
+
+.sub-heading {
+  margin-top: 18px;
+}
+
+/* Rank groups */
+.rank-groups {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: grid;
+  gap: 8px;
+}
+
+.rank-group {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.rank-group__header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  background: #fff;
+  border: none;
+  padding: 11px 14px;
+  cursor: pointer;
+  text-align: left;
+  font-size: 14px;
+}
+
+.rank-group__header:hover {
+  background: var(--panel-soft);
+}
+
+.rank-group__label {
+  font-weight: 700;
+  font-size: 16px;
+  min-width: 40px;
+  word-break: break-word;
+}
+
+.rank-group__meta {
+  color: var(--muted);
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+
+.rank-group__prob {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* 合并行额外给出「每个成员自己的概率」：左侧色条 + 两（三）个独立胶囊，
+   把「组合数」与「概率」在视觉上分开。 */
+.rank-group__per {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 14px 10px 14px;
+  padding: 7px 10px;
+  border-left: 3px solid #f59e0b;
+  background: #fffbeb;
+  border-radius: 0 8px 8px 0;
+}
+
+.rank-group__per-tag {
+  font-size: 11px;
+  font-weight: 700;
+  color: #7c2d12;
+  background: #fed7aa;
+  border-radius: 999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+.rank-group__per-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 9px;
+  border: 1px dashed var(--border);
+  border-radius: 999px;
+  background: #fff;
+  white-space: nowrap;
+}
+
+.rank-group__per-item--prob {
+  border-style: solid;
+  border-color: #ddd6fe;
+  background: #f5f3ff;
+}
+
+.rank-group__per-item--prob .rank-group__per-key {
+  color: #6d28d9;
+}
+
+.rank-group__per-item--same {
+  border-style: solid;
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.rank-group__per-item--same .rank-group__per-key {
+  color: #1d4ed8;
+}
+
+.rank-group__per-key {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* 胶囊本身已经是「底色」，内部的计数与百分比不再重复画底色。 */
+.rank-group__per .count-badge {
+  font-size: 12px;
+  padding: 1px 7px;
+  background: transparent;
+  border: none;
+}
+
+.rank-group__per .pct--md {
+  font-size: 15px;
+  padding: 0;
+  background: transparent;
+}
+.rank-group__arrow {
+  color: var(--accent);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.rank-group__combos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--panel-soft);
+  border-top: 1px solid var(--border);
+}
+
+.combo-row {
+  background: #fff;
+  border-radius: 8px;
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+}
+
+/* Debug */
+.debug-inputs {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.debug-inputs label,
+.filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.debug-inputs input,
+.filters select {
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  font-size: 14px;
+  color: var(--text);
+  min-width: 200px;
+}
+
+.filters {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 8px 0 12px;
+}
+
+.debug-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.debug-table th,
+.debug-table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.debug-table th {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+@media (max-width: 520px) {
+  .app {
+    padding: 12px 10px 56px;
+  }
+
+  .board {
+    gap: 18px;
+  }
+
+  .card--lg {
+    width: 50px;
+    height: 72px;
+    font-size: 19px;
+  }
+
+  .pct--lg {
+    font-size: 21px;
+    padding: 2px 9px;
+  }
+
+  .overall-list__label {
+    font-size: 14px;
+  }
+}
