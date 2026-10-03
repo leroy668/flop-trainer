@@ -71,6 +71,16 @@ function isFlushCounts(c0: number, c1: number, c2: number, c3: number): boolean 
   return c0 >= 5 || c1 >= 5 || c2 >= 5 || c3 >= 5;
 }
 
+/** 13 位点数掩码是否为顺子（含 A2345 轮子）。供其他模块复用，口径与听牌判断一致。 */
+export function isStraightMask(mask: number): boolean {
+  return STRAIGHT_MASK_TABLE[mask];
+}
+
+/** 点数掩码里的某一「点」的位。 */
+export function rankMaskBit(rank: Rank): number {
+  return rankBitOf(rank);
+}
+
 export interface DrawCompletion {
   /** 下一张公共牌就能补成的牌，即补牌（outs）。 */
   outs: Card[];

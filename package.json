@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "smoke": "node scripts/_smoke.mjs"
+    "smoke": "node scripts/_smoke.mjs",
+    "smoke:tax": "node scripts/_smoke-tax.mjs"
   },
   "dependencies": {
     "react": "^19.1.0",

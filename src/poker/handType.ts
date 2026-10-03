@@ -31,7 +31,7 @@ export type PairPosition =
   | 'underpair'
   | 'board-pair';
 
-const PAIR_POSITION_LABELS: Record<PairPosition, string> = {
+export const PAIR_POSITION_LABELS: Record<PairPosition, string> = {
   overpair: '超对',
   'top-pair': '顶对',
   'middle-pair': '中对',
@@ -100,7 +100,7 @@ function overcardCount(hero: readonly Card[], board: readonly Card[]): number {
  * 一对的位置：先看是不是口袋对，再看配中的是公共牌里的哪一张。
  * 返回 null 表示这一对来自公共牌自己成对，底牌两张都只是踢脚。
  */
-function classifyPair(
+export function classifyPair(
   hero: readonly Card[],
   board: readonly Card[],
 ): { position: PairPosition; detail: string } | null {

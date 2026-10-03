@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Board } from '../components/Board';
 import { HandTypeSelector } from '../components/HandTypeSelector';
 import { ProbabilityRangeSelector } from '../components/ProbabilityRangeSelector';
@@ -255,6 +256,9 @@ export function TrainerPage() {
             </span>
             <span className="switch__label">直接看答案</span>
           </label>
+          <Link className="button button--ghost" to="/flop-types">
+            翻牌牌型图鉴
+          </Link>
           <button
             type="button"
             className="button button--ghost"
