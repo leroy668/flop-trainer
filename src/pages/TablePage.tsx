@@ -44,6 +44,8 @@ const SETTINGS = {
   equity: 'flop-trainer:table-equity',
   reveal: 'flop-trainer:table-reveal',
   bots: 'flop-trainer:table-bots',
+  tableState: 'flop-trainer:table-saved-state',
+  history: 'flop-trainer:table-saved-history',
 };
 
 /** 可以选的机器人数量（含 Hero 就是 2 ～ 6 人桌）。 */
@@ -69,6 +71,43 @@ function writeSetting(key: string, value: string): void {
   } catch {
     // file:// 下可能拿不到 localStorage，忽略即可。
   }
+}
+
+function loadSavedTable(): { table: TableState; history: TableState[] } {
+  try {
+    const rawTable = localStorage.getItem(SETTINGS.tableState);
+    if (rawTable) {
+      const parsedTable = JSON.parse(rawTable) as TableState;
+      if (
+        parsedTable &&
+        Array.isArray(parsedTable.seats) &&
+        parsedTable.seats.length >= 2 &&
+        parsedTable.seats[0]?.isHero
+      ) {
+        let history: TableState[] = [];
+        try {
+          const rawHistory = localStorage.getItem(SETTINGS.history);
+          if (rawHistory) {
+            const parsedHistory = JSON.parse(rawHistory);
+            if (Array.isArray(parsedHistory)) history = parsedHistory;
+          }
+        } catch {
+          history = [];
+        }
+        return { table: parsedTable, history };
+      }
+    }
+  } catch {
+    // 损坏或不可用则降级新开一桌
+  }
+
+  return {
+    table: createTable({
+      seed: (Date.now() ^ 0x5f3759df) >>> 0,
+      seats: readBots() + 1,
+    }),
+    history: [],
+  };
 }
 
 const ACTION_HINTS: Record<ActionType, string> = {
@@ -214,13 +253,7 @@ function SeatCard({
 }
 
 export function TablePage() {
-  const [ui, dispatch] = useReducer(reducer, undefined, () => ({
-    table: createTable({
-      seed: (Date.now() ^ 0x5f3759df) >>> 0,
-      seats: readBots() + 1,
-    }),
-    history: [],
-  }));
+  const [ui, dispatch] = useReducer(reducer, undefined, () => loadSavedTable());
   const [delay, setDelay] = useState(() => {
     const saved = Number(readSetting(SETTINGS.delay, String(SPEEDS[1].delay)));
     return SPEEDS.some((speed) => speed.delay === saved) ? saved : SPEEDS[1].delay;
@@ -236,6 +269,17 @@ export function TablePage() {
     () => writeSetting(SETTINGS.bots, String(ui.table.seats.length - 1)),
     [ui.table.seats.length],
   );
+
+  // 牌局状态与历史自动持久化存储，页面刷新或重新打开时完美还原当前局面
+  useEffect(() => {
+    try {
+      localStorage.setItem(SETTINGS.tableState, JSON.stringify(ui.table));
+      // 为控制 storage 大小，历史最多保存最近 20 步
+      localStorage.setItem(SETTINGS.history, JSON.stringify(ui.history.slice(-20)));
+    } catch {
+      // 存储满或无权限时静默忽略
+    }
+  }, [ui.table, ui.history]);
 
   const { table } = ui;
   const hero = table.seats[0];
