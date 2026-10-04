@@ -297,7 +297,7 @@ export function TablePage() {
             {TABLE_CONSTANTS.BIG_BLIND}，下注 / 加注只有{' '}
             {TABLE_CONSTANTS.BET_SIZES.join(' / ')} 三档、<strong>{TABLE_BET_CAP} 封顶</strong>
             （档位 = 本街你在自己面前的总投入），{' '}
-            <strong>翻牌前禁止全下，翻牌后才能全下</strong>。
+            <strong>翻牌前禁止全下（ALL IN），翻牌后才能全下（ALL IN）</strong>。
           </p>
         </div>
         <div className="page__header-actions">
@@ -453,10 +453,10 @@ export function TablePage() {
             <div className="actions">
               <span className="muted small">
                 {table.street === 'preflop'
-                  ? `翻牌前不会出现「全下」：下注 / 加注只有 ${TABLE_CONSTANTS.BET_SIZES.join(
+                  ? `翻牌前不会出现「全下（ALL IN）」：下注 / 加注只有 ${TABLE_CONSTANTS.BET_SIZES.join(
                       ' / ',
                     )} 三档、本街投入 ${TABLE_BET_CAP} 封顶（大盲 10，所以这里只能跟注 10 或直接加到 ${TABLE_BET_CAP}），加注后还必须留至少 1 个筹码。`
-                  : `翻牌后可以全下（一次推进全部剩余筹码，不受 ${TABLE_BET_CAP} 封顶限制，也算一次加注）。下注 / 加注档位是 ${TABLE_CONSTANTS.BET_SIZES.join(
+                  : `翻牌后可以全下（ALL IN：一次推进全部剩余筹码，不受 ${TABLE_BET_CAP} 封顶限制，也算一次加注）。下注 / 加注档位是 ${TABLE_CONSTANTS.BET_SIZES.join(
                       ' / ',
                     )}，本街最多投入 ${TABLE_BET_CAP}。`}
               </span>
@@ -620,7 +620,7 @@ export function TablePage() {
           <li>
             <strong>这不是标准无限注德州扑克</strong>，只有两条最重要的改动：下注 / 加注只有{' '}
             <strong>5 / 10 / 20</strong> 三档（<strong>{TABLE_BET_CAP} 封顶</strong>）；
-            <strong>翻牌前禁止全下，翻牌后才能全下</strong>。
+            <strong>翻牌前禁止全下（ALL IN），翻牌后才能全下（ALL IN）</strong>。
           </li>
           <li>
             下注 / 加注的档位指的是<strong>你这一条街在自己面前一共投入多少</strong>，不是「再加多少」，
@@ -633,11 +633,11 @@ export function TablePage() {
             封顶只约束「下注 / 加注」，翻牌后的<strong>梭哈</strong>不受它限制。
           </li>
           <li>
-            <strong>翻牌前不能全下</strong>：加注后必须留至少 1 个筹码；
+            <strong>翻牌前不能全下（ALL IN）</strong>：加注后必须留至少 1 个筹码；
             翻牌前筹码不够跟注时只能弃牌。
           </li>
           <li>
-            <strong>翻牌后可以全下</strong>：把剩余筹码一次推进去，<strong>不受 {TABLE_BET_CAP} 封顶限制</strong>。
+            <strong>翻牌后可以全下（ALL IN）</strong>：把剩余筹码一次推进去，<strong>不受 {TABLE_BET_CAP} 封顶限制</strong>。
           </li>
           <li>
             摊牌按 7 张牌里最好的 5 张比大小；投入不等的全下按主池 / 边池分配，

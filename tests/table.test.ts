@@ -536,6 +536,102 @@ describe('本桌不是标准无限注德州扑克', () => {
 /* 人数可调：加 / 减机器人                                              */
 /* ------------------------------------------------------------------ */
 
+describe('翻牌前禁止全下（只允许翻牌后 ALL IN）', () => {
+  const STACKS = [1, 2, 5, 9, 10, 11, 15, 20, 21, 200];
+  const COMMITTED = [0, 5, 10];
+  const CURRENT_BETS = [10, 20];
+  const RAISE_COUNTS = [0, 1, 2, 3];
+
+  /** 把真实开局状态改造成各种刁钻局面（筹码被掏空、面对加注、加注次数用完…）。 */
+  function hostileStates(street: 'preflop' | 'flop'): TableState[] {
+    const out: TableState[] = [];
+    for (let seatCount = 2; seatCount <= 6; seatCount += 1) {
+      const base = startHand(createTable({ seed: seatCount * 31, seats: seatCount }));
+      for (const stack of STACKS) {
+        for (const own of COMMITTED) {
+          for (const currentBet of CURRENT_BETS) {
+            for (const raiseCount of RAISE_COUNTS) {
+              for (let actor = 0; actor < seatCount; actor += 1) {
+                const state = clone(base);
+                state.street = street;
+                state.board = street === 'flop' ? state.deck.slice(0, 3) : [];
+                state.result = null;
+                state.currentBet = currentBet;
+                state.raiseCount = raiseCount;
+                state.actor = actor;
+                for (const seat of state.seats) {
+                  seat.folded = false;
+                  seat.allIn = false;
+                  seat.hasActed = false;
+                  seat.committedStreet = own;
+                  seat.committedTotal = own;
+                  seat.stack = stack;
+                }
+                out.push(state);
+              }
+            }
+          }
+        }
+      }
+    }
+    return out;
+  }
+
+  it('扫遍 4800 个翻牌前局面：一个「全下」都没有，也不存在「跟注即全下」', () => {
+    const states = hostileStates('preflop');
+    expect(states.length).toBe(4800);
+    for (const state of states) {
+      const actor = state.actor!;
+      const own = state.seats[actor].committedStreet;
+      const stack = state.seats[actor].stack;
+      const toCall = Math.max(0, state.currentBet - own);
+      const legal = legalActions(state, actor);
+
+      expect(legal.length).toBeGreaterThan(0);
+      for (const action of legal) {
+        expect(action.type, `翻牌前不该有 ${action.type}`).not.toBe('allin');
+        expect(action.label).not.toContain('全下');
+      }
+      // 筹码不足以跟注时只剩弃牌（翻牌前不允许「跟注全下」）。
+      if (stack <= toCall) {
+        expect(legal.map((action) => action.type)).toEqual(['fold']);
+      }
+      // 手动硬塞全下：找不到，也执行不了。
+      expect(findLegalAction(state, actor, { type: 'allin', amount: stack })).toBeNull();
+      expect(() => applyAction(state, actor, { type: 'allin', amount: stack })).toThrow();
+      // 翻牌前能拿到的加注档位一定付得起、而且一定留得下至少 1 个筹码。
+      for (const action of legal.filter((candidate) => candidate.type === 'bet')) {
+        const delta = action.amount! - own;
+        expect(delta).toBeGreaterThan(0);
+        expect(delta).toBeLessThan(stack);
+      }
+    }
+  });
+
+  it('同样的局面换成翻牌圈：能全下的时候全下按钮就出现', () => {
+    for (const state of hostileStates('flop')) {
+      const actor = state.actor!;
+      const own = state.seats[actor].committedStreet;
+      const stack = state.seats[actor].stack;
+      const toCall = Math.max(0, state.currentBet - own);
+      const legal = legalActions(state, actor);
+      const allin = legal.find((action) => action.type === 'allin');
+
+      if (stack > toCall) {
+        expect(allin, `筹码 ${stack} / 需跟 ${toCall} 时应该有全下`).toBeDefined();
+        expect(allin!.amount).toBe(stack);
+        expect(allin!.label).toBe(`全下 ${stack}`);
+        // 全下不受 20 封顶限制。
+        expect(applyAction(state, actor, allin!).seats[actor].allIn).toBe(true);
+      } else {
+        expect(allin).toBeUndefined();
+        // 跟不起的时候，跟注按钮本身就是「跟注 N（全下）」。
+        expect(legal.some((action) => action.label.includes('全下'))).toBe(true);
+      }
+    }
+  });
+});
+
 describe('人数可调', () => {
   it('座位数会被夹在 2 ～ 6 之间，名字依次是 你 / 机器人 A…E', () => {
     expect(createTable({ seed: 1, seats: 1 }).seats).toHaveLength(2);
