@@ -412,3 +412,77 @@ describe('机器人整局', () => {
     expect(preflopAllIns).toBe(0);
   }, 30000);
 });
+
+/* ------------------------------------------------------------------ */
+/* 非标准德州：下注额度固定、翻牌前禁止全下                              */
+/* ------------------------------------------------------------------ */
+
+describe('本桌不是标准无限注德州扑克', () => {
+  it('扫完 40 手随机对局的每个决策点：下注/加注只能是 5 / 10 / 20，全下只出现在翻牌后', () => {
+    const rng = createRng(4242);
+    let state = createTable({ seed: 4242 });
+    const betAmounts = new Set<number>();
+    const labels = new Set<string>();
+    const allinStreets = new Set<string>();
+    const streetsWithBet = new Set<string>();
+    const streetsWithAllIn = new Set<string>();
+    let decisionPoints = 0;
+
+    for (let hand = 0; hand < 40; hand += 1) {
+      if (hand > 0) state = startHand(state);
+      let guard = 0;
+      while (state.actor !== null && guard < 400) {
+        const seatIndex = state.actor;
+        const seat = state.seats[seatIndex];
+        const legal = legalActions(state, seatIndex);
+        const toCall = Math.max(0, state.currentBet - seat.committedStreet);
+        decisionPoints += 1;
+
+        for (const action of legal) {
+          labels.add(`${state.street} ${action.label}`);
+          if (state.street === 'preflop') {
+            // 翻牌前：既不能全下，也不允许「跟注即全下」。
+            expect(action.type).not.toBe('allin');
+            expect(action.label).not.toContain('全下');
+          }
+          if (action.type === 'bet') {
+            betAmounts.add(action.amount!);
+            streetsWithBet.add(state.street);
+            // 加注金额是「在你面前再加的增量」，总额 = 跟注额 + 增量。
+            expect([5, 10, 20]).toContain(action.amount);
+            expect(action.label).toBe(
+              `${state.currentBet > 0 ? '加注' : '下注'} ${action.amount}（到 ${
+                seat.committedStreet + toCall + action.amount!
+              }）`,
+            );
+          }
+          if (action.type === 'allin') {
+            allinStreets.add(state.street);
+            streetsWithAllIn.add(state.street);
+            expect(state.street === 'flop' || state.street === 'turn' || state.street === 'river').toBe(
+              true,
+            );
+          }
+        }
+
+        // 机器人只能从合法动作里选，所以也顺带验证了「非法动作不可能发生」。
+        const action = decideBotAction(state, seatIndex, rng);
+        expect(findLegalAction(state, seatIndex, action)).toBeDefined();
+        state = applyAction(state, seatIndex, action);
+        guard += 1;
+      }
+    }
+
+    expect(decisionPoints).toBeGreaterThan(200);
+    // 三种额度都必须真的出现过，且不可能出现第四种。
+    expect([...betAmounts].sort((a, b) => a - b)).toEqual([5, 10, 20]);
+    // 下注 / 加注在四条街都有；全下只在翻牌之后出现。
+    expect([...streetsWithBet].sort()).toEqual(['flop', 'preflop', 'river', 'turn']);
+    expect([...allinStreets].sort()).toEqual(['flop', 'river', 'turn']);
+    expect([...streetsWithAllIn]).not.toContain('preflop');
+    // 按钮文案长这样（翻牌前）：弃牌 / 跟注 10 / 加注 5（到 15）…
+    expect([...labels].some((label) => label === 'preflop 加注 5（到 15）')).toBe(true);
+    expect([...labels].some((label) => label === 'preflop 跟注 10')).toBe(true);
+    expect([...labels].every((label) => !label.startsWith('preflop 全下'))).toBe(true);
+  }, 60000);
+});

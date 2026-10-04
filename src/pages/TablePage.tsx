@@ -260,9 +260,11 @@ export function TablePage() {
         <div>
           <h1>模拟牌桌</h1>
           <p className="muted">
-            你 + 3 个电脑玩家 · 盲注 {TABLE_CONSTANTS.SMALL_BLIND}/
-            {TABLE_CONSTANTS.BIG_BLIND} · 每次买入上限 {TABLE_CONSTANTS.BUY_IN} 筹码 ·
-            只能下注 5 / 10 / 20 · 翻牌前不能全下，翻牌后可以全下
+            <strong>不是标准无限注德州扑克</strong>：4 人桌，买入上限{' '}
+            {TABLE_CONSTANTS.BUY_IN} 筹码，盲注 {TABLE_CONSTANTS.SMALL_BLIND}/
+            {TABLE_CONSTANTS.BIG_BLIND}，下注 / 加注只有{' '}
+            {TABLE_CONSTANTS.BET_SIZES.join(' / ')} 三种额度，{' '}
+            <strong>翻牌前禁止全下，翻牌后才能全下</strong>。
           </p>
         </div>
         <div className="page__header-actions">
@@ -414,8 +416,12 @@ export function TablePage() {
             <div className="actions">
               <span className="muted small">
                 {table.street === 'preflop'
-                  ? '翻牌前只能用 5 / 10 / 20 加注，而且加注后必须留至少 1 个筹码，所以这里没有「全下」；每条街最多加注 3 次。'
-                  : '翻牌后可以全下（会把剩余筹码一次推进去，也算一次加注）；每条街最多加注 3 次。'}
+                  ? `翻牌前不会出现「全下」：只能弃牌 / 跟注 / 加注 ${TABLE_CONSTANTS.BET_SIZES.join(
+                      ' / ',
+                    )}，加注后还必须留至少 1 个筹码。`
+                  : `翻牌后可以全下（一次推进全部剩余筹码，也算一次加注）。下注 / 加注额度同样只有 ${TABLE_CONSTANTS.BET_SIZES.join(
+                      ' / ',
+                    )}。`}
               </span>
             </div>
           </>
@@ -553,7 +559,13 @@ export function TablePage() {
             小盲 5 / 大盲 10，每手轮换庄家；翻牌前从大盲左手边开始，翻牌后从庄家左手边开始。
           </li>
           <li>
-            下注 / 加注只有 <strong>5 / 10 / 20</strong> 三种增量（加注金额指「在你面前再加多少」）。
+            <strong>这不是标准无限注德州扑克</strong>，只有两条最重要的改动：下注 / 加注额度固定为{' '}
+            <strong>5 / 10 / 20</strong>；<strong>翻牌前禁止全下，翻牌后才能全下</strong>。
+          </li>
+          <li>
+            下注 / 加注的 5 / 10 / 20 指的是<strong>这一次在你面前再多放多少</strong>，
+            所以按钮上会写成「加注 20（到 30）」「加注 5（到 15）」——
+            多放的那部分永远是 5 / 10 / 20 之一。跟注则按对手的下注额补齐（跟注额可以是任何数）。
           </li>
           <li>
             每条街最多加注 3 次（全下也算一次加注），加满之后只能跟注或弃牌。
