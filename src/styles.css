@@ -369,59 +369,104 @@ h3 {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: #fff;
+  background: #ffffff;
   border: 1px solid #cbd5e1;
-  border-radius: 10px;
+  border-radius: 8px;
   font-weight: 700;
   line-height: 1;
-  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.12);
+  box-shadow: 0 2px 5px rgba(15, 23, 42, 0.08);
+  user-select: none;
+  position: relative;
 }
 
 .card--sm {
-  width: 36px;
-  height: 52px;
-  font-size: 15px;
-  border-radius: 7px;
-  gap: 1px;
+  width: 34px;
+  height: 48px;
+  border-radius: 6px;
+  gap: 2px;
+}
+
+.card--sm .card__rank {
+  font-size: 14px;
+}
+
+.card--sm .card__suit-svg {
+  width: 14px;
+  height: 14px;
 }
 
 .card--md {
-  width: 46px;
-  height: 66px;
-  font-size: 18px;
-  gap: 2px;
+  width: 44px;
+  height: 62px;
+  border-radius: 7px;
+  gap: 3px;
+}
+
+.card--md .card__rank {
+  font-size: 17px;
+}
+
+.card--md .card__suit-svg {
+  width: 17px;
+  height: 17px;
 }
 
 .card--lg {
   width: 58px;
   height: 82px;
-  font-size: 22px;
-  gap: 3px;
+  border-radius: 9px;
+  gap: 4px;
+}
+
+.card--lg .card__rank {
+  font-size: 21px;
+}
+
+.card--lg .card__suit-svg {
+  width: 21px;
+  height: 21px;
 }
 
 .card--red {
-  color: var(--red);
+  color: #dc2626;
 }
 
 .card--black {
-  color: #111827;
+  color: #1e293b;
 }
 
 .card--hidden {
-  color: var(--muted);
-  background: repeating-linear-gradient(45deg, #e2e8f0, #e2e8f0 6px, #cbd5e1 6px, #cbd5e1 12px);
+  color: #94a3b8;
+  background: repeating-linear-gradient(
+    135deg,
+    #f1f5f9,
+    #f1f5f9 5px,
+    #e2e8f0 5px,
+    #e2e8f0 10px
+  );
+  border-color: #cbd5e1;
+}
+
+.card__back-mark {
+  font-size: 18px;
+  opacity: 0.6;
 }
 
 .card__rank {
   font-weight: 800;
   line-height: 1;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
-.card__suit {
-  font-size: 1.15em;
+.card__suit-icon-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   line-height: 1;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI Emoji", "Noto Color Emoji", "Apple Color Emoji", sans-serif;
-  margin-top: -1px;
+}
+
+.card__suit-svg {
+  display: block;
 }
 
 .card-pair {
@@ -2174,12 +2219,16 @@ h3 {
 .seat--hero .seat__cards .card {
   width: 44px;
   height: 62px;
-  font-size: 17px;
   border-width: 1.5px;
 }
 
-.seat--hero .seat__cards .card__suit {
-  font-size: 1.25em;
+.seat--hero .seat__cards .card .card__rank {
+  font-size: 17px;
+}
+
+.seat--hero .seat__cards .card .card__suit-svg {
+  width: 17px;
+  height: 17px;
 }
 
 .seat__line {
