@@ -329,17 +329,18 @@ export function TablePage() {
     };
   }, [heroCards, cards]);
 
-  // 轮到电脑时按当前速度自动出牌。
+  // 轮到电脑时按设定速度出牌；若玩家已弃牌，电脑行动自动极速快进（40ms），无需无谓等待。
   useEffect(() => {
     if (table.result || table.actor === null) return;
     const actor = table.actor;
     if (table.seats[actor].isHero) return;
+    const waitTime = hero.folded ? Math.min(40, delay) : delay;
     const timer = window.setTimeout(() => {
       const action = decideBotAction(table, actor, rngRef.current);
       dispatch({ type: 'tick', action });
-    }, delay);
+    }, waitTime);
     return () => window.clearTimeout(timer);
-  }, [table, delay]);
+  }, [table, delay, hero.folded]);
 
   const potOdds = toCall > 0 ? toCall / (table.pot + toCall) : 0;
   const { smallBlind: smallBlindIndex, bigBlind: bigBlindIndex } = blindIndices(
