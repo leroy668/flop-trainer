@@ -232,6 +232,8 @@ function SeatCard({
         )}
       </div>
 
+      {hand && <div className="seat__hand">{describeHandValue(hand)}</div>}
+
       <div className="seat__line">
         <span className="muted small">筹码</span>
         <StackValue value={seat.stack} />
@@ -245,7 +247,6 @@ function SeatCard({
         </div>
       )}
 
-      {hand && <div className="seat__hand">{describeHandValue(hand)}</div>}
       {!hand && seat.lastAction && (
         <div className="seat__action">{seat.lastAction}</div>
       )}
