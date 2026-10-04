@@ -97,7 +97,7 @@ describe('当前 5 张牌的归类', () => {
   it('两对及以上直接用评价器的描述', () => {
     const twoPair = summarize('As 8d', 'Ah 8c 3d');
     expect(twoPair.madeHand).toBe('两对');
-    expect(twoPair.detail).toBe('两对A8，3踢脚');
+    expect(twoPair.detail).toBe('两对 A、8');
 
     const flush = summarize('As Ks', 'Qs 7s 2s');
     expect(flush.madeHand).toBe('同花');

@@ -269,33 +269,35 @@ export function rankValueToLabel(value: number): string {
   return RANK_NAMES[value] ?? String(value);
 }
 
-/** 生成中文牌型描述，例如“一对A，K踢脚”。 */
+function rankToNaturalLabel(value: number): string {
+  return value === 10 ? '10' : rankValueToLabel(value);
+}
+
+/** 生成极简直观的中文牌型描述，如“两对 10、7”、“一对 A”。 */
 export function describeHandValue(value: HandValue): string {
-  const label = HAND_CATEGORY_LABELS[value.category];
   const t = value.tiebreak;
-  const card = (v: number) => rankValueToLabel(v);
+  const card = (v: number) => rankToNaturalLabel(v);
 
   switch (value.category) {
     case HandCategory.HighCard:
-      return `${label}${t.map(card).join('')}`;
+      return `${card(t[0])} 高牌`;
     case HandCategory.OnePair:
-      return `${label}${card(t[0])}，${t.slice(1).map(card).join('')}踢脚`;
+      return `一对 ${card(t[0])}`;
     case HandCategory.TwoPair:
-      return `${label}${card(t[0])}${card(t[1])}，${card(t[2])}踢脚`;
+      return `两对 ${card(t[0])}、${card(t[1])}`;
     case HandCategory.Trips:
-      return `${label}${card(t[0])}，${t.slice(1).map(card).join('')}踢脚`;
+      return `三条 ${card(t[0])}`;
     case HandCategory.Straight:
-      return `${label}，${card(t[0])}高`;
+      return `顺子（${card(t[0])}高）`;
     case HandCategory.Flush:
-      return `${label}，${t.map(card).join('')}`;
+      return `同花（${card(t[0])}高）`;
     case HandCategory.FullHouse:
-      // 「三条 X 带一对 Y」比「X 带 Y」直观得多，一眼能看出哪部分是三条。
-      return `${label}：三条${card(t[0])} + 一对${card(t[1])}`;
+      return `葫芦（三条${card(t[0])} + 一对${card(t[1])}）`;
     case HandCategory.Quads:
-      return `${label}${card(t[0])}，${card(t[1])}踢脚`;
+      return `四条 ${card(t[0])}`;
     case HandCategory.StraightFlush:
-      return `${label}，${card(t[0])}高`;
+      return t[0] === 14 ? '皇家同花顺' : `同花顺（${card(t[0])}高）`;
     default:
-      return label;
+      return HAND_CATEGORY_LABELS[value.category];
   }
 }

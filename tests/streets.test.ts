@@ -185,7 +185,7 @@ describe('固定场景的转牌 / 河牌结果', () => {
     expect(a.street).toBe('turn');
     expect(a.remainingCount).toBe(46);
     expect([a.aheadCount, a.tieCount, a.behindCount]).toEqual([71, 6, 958]);
-    expect(describeHandValue(a.heroHandValue)).toBe('一对A，K83踢脚');
+    expect(describeHandValue(a.heroHandValue)).toBe('一对 A');
   });
 
   it('河牌 9h 后：领先 107 / 平手 6 / 落后 877', () => {
@@ -193,19 +193,19 @@ describe('固定场景的转牌 / 河牌结果', () => {
     expect(a.street).toBe('river');
     expect(a.remainingCount).toBe(45);
     expect([a.aheadCount, a.tieCount, a.behindCount]).toEqual([107, 6, 877]);
-    // 河牌 9h 让 Hero 变成 K 9 8 踢脚
-    expect(describeHandValue(a.heroHandValue)).toBe('一对A，K98踢脚');
+    // 河牌 9h 让 Hero 依然是一对 A
+    expect(describeHandValue(a.heroHandValue)).toBe('一对 A');
   });
 
   it('转牌让 Hero 成两对时，能压过他的组合骤减到 8 个', () => {
     const a = analyzeScenario(street('As Kd', 'Ah 8c 3d Ks'));
-    expect(describeHandValue(a.heroHandValue)).toBe('两对AK，8踢脚');
+    expect(describeHandValue(a.heroHandValue)).toBe('两对 A、K');
     expect(a.aheadCount).toBe(8);
   });
 
   it('河牌成葫芦后只有 44 个组合能压过', () => {
     const a = analyzeScenario(street('As Ad', 'Ah Kc Kd Ks 2h'));
-    expect(describeHandValue(a.heroHandValue)).toBe('葫芦：三条A + 一对K');
+    expect(describeHandValue(a.heroHandValue)).toBe('葫芦（三条A + 一对K）');
     expect(a.aheadCount).toBe(44);
     expect(a.tieCount).toBe(0);
   });
