@@ -2010,3 +2010,298 @@ h3 {
     flex-wrap: wrap;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* 模拟牌桌（#/table）                                                 */
+/* ------------------------------------------------------------------ */
+
+.table-stage__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.table-board {
+  display: flex;
+  gap: 6px;
+}
+
+.table-pot {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.table-pot__value {
+  font-size: 26px;
+  line-height: 1.1;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.seats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.seat {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fdfdfd;
+}
+
+.seat--hero {
+  border-color: var(--accent);
+  background: #f5f8ff;
+}
+
+.seat--active {
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.25);
+}
+
+.seat--folded {
+  opacity: 0.5;
+}
+
+.seat--allin {
+  border-style: dashed;
+}
+
+.seat--winner {
+  border-color: #16a34a;
+  background: #f0fdf4;
+}
+
+.seat__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.seat__name {
+  font-weight: 700;
+}
+
+.seat__badges {
+  display: flex;
+  gap: 4px;
+}
+
+.seat__badge {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.seat__badge--dealer {
+  background: #111827;
+  color: #fff;
+}
+
+.seat__cards {
+  display: flex;
+  gap: 4px;
+  min-height: 46px;
+  align-items: center;
+}
+
+.seat__line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.seat__stack-value {
+  font-variant-numeric: tabular-nums;
+}
+
+.seat__bet {
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #fff7ed;
+  color: #b45309;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.seat__action,
+.seat__hand {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.seat__hand {
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.seat__folded {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.seat__delta {
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.seat__delta.is-up {
+  color: #16a34a;
+}
+
+.seat__delta.is-down {
+  color: #dc2626;
+}
+
+.table-result__summary {
+  margin: 0 0 8px;
+  font-weight: 600;
+}
+
+.table-awards {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.table-awards li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13.5px;
+}
+
+.table-awards__note {
+  min-width: 54px;
+  color: var(--muted);
+}
+
+.table-awards__amount {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.table-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 4px;
+}
+
+.table-button {
+  min-width: 96px;
+}
+
+.table-button--fold {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.table-button--call {
+  background: #dbeafe;
+  color: #1e3a8a;
+}
+
+.table-button--allin {
+  background: #7f1d1d;
+  color: #fff;
+}
+
+.table-button--check {
+  background: #ecfdf5;
+  color: #065f46;
+}
+
+.table-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+
+.button--tiny {
+  padding: 2px 8px;
+  font-size: 12.5px;
+}
+
+.switch--compact {
+  gap: 6px;
+}
+
+.switch--compact .switch__track {
+  width: 34px;
+  height: 20px;
+}
+
+.switch--compact .switch__thumb {
+  width: 14px;
+  height: 14px;
+}
+
+.switch--compact input:checked + .switch__track .switch__thumb {
+  transform: translateX(14px);
+}
+
+.table-equity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  margin-bottom: 8px;
+}
+
+.table-equity__key {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.table-log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  display: grid;
+  gap: 3px;
+  font-size: 13.5px;
+}
+
+.table-log li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.table-log__street {
+  flex: 0 0 58px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.table-log__system {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.table-log__hero {
+  color: #1d4ed8;
+}

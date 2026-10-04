@@ -256,11 +256,10 @@ describe('lookupBoard', () => {
   it('分类结果与输入一致（100 个随机翻牌）', () => {
     const deck = createDeck();
     for (let n = 0; n < 100; n += 1) {
-      const i = Math.floor(Math.random() * 52);
-      let j = Math.floor(Math.random() * 52);
-      let k = Math.floor(Math.random() * 52);
-      if (j === i) j = (j + 1) % 52;
-      if (k === i || k === j) k = (k + 2) % 52;
+      // 抽三张互不相同的牌（用拒绝采样，避免下标撞车）。
+      const picked = new Set<number>();
+      while (picked.size < 3) picked.add(Math.floor(Math.random() * 52));
+      const [i, j, k] = [...picked];
       const triple = [deck[i], deck[j], deck[k]] as [Card, Card, Card];
       const dims = boardTextureDims(triple);
       const hit = lookupBoard(atlas, triple);

@@ -12,7 +12,8 @@
     "test:watch": "vitest",
     "smoke": "node scripts/_smoke.mjs",
     "smoke:tax": "node scripts/_smoke-tax.mjs",
-    "smoke:board": "node scripts/_smoke-board.mjs"
+    "smoke:board": "node scripts/_smoke-board.mjs",
+    "smoke:table": "node scripts/_smoke-table.mjs"
   },
   "dependencies": {
     "react": "^19.1.0",

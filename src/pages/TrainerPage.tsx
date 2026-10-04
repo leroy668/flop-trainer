@@ -262,6 +262,9 @@ export function TrainerPage() {
           <Link className="button button--ghost" to="/board-textures">
             牌面结构图鉴
           </Link>
+          <Link className="button button--ghost" to="/table">
+            模拟牌桌
+          </Link>
           <button
             type="button"
             className="button button--ghost"
