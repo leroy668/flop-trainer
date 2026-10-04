@@ -2901,3 +2901,180 @@ h3 {
 .table-log__hero {
   color: #1d4ed8;
 }
+
+/* 移动端响应式极致压缩（解决机器人过多导致页面过长、滑动半天的问题） */
+@media (max-width: 640px) {
+  .page {
+    padding: 10px;
+    gap: 10px;
+  }
+
+  .table-stage {
+    padding: 10px;
+  }
+
+  .table-stage__top {
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    gap: 8px;
+  }
+
+  .table-board {
+    gap: 4px;
+  }
+
+  .table-board .card--lg {
+    width: 38px;
+    height: 54px;
+    border-radius: 6px;
+  }
+
+  .table-board .card--lg .card__rank {
+    font-size: 15px;
+  }
+
+  .table-board .card--lg .card__suit-svg {
+    width: 15px;
+    height: 15px;
+  }
+
+  .table-pot__value {
+    font-size: 22px;
+  }
+
+  /* 机器人卡片网格紧凑化：移动端 2 列甚至 3 列并排，减少纵向占用 */
+  .seats {
+    grid-template-columns: repeat(auto-fit, minmax(105px, 1fr));
+    gap: 6px;
+  }
+
+  .seat {
+    padding: 6px 8px;
+    gap: 3px;
+    border-radius: 8px;
+  }
+
+  .seat__head {
+    gap: 4px;
+  }
+
+  .seat__name {
+    font-size: 12.5px;
+  }
+
+  .seat__badge {
+    padding: 0 4px;
+    font-size: 10px;
+  }
+
+  .seat__cards {
+    min-height: 38px;
+    padding: 2px 0;
+    gap: 4px;
+  }
+
+  /* 机器人卡片紧凑模式 */
+  .seat .card {
+    width: 26px;
+    height: 36px;
+    border-radius: 4px;
+    border-width: 1px;
+  }
+
+  .seat .card .card__rank {
+    font-size: 11px;
+  }
+
+  .seat .card .card__suit-svg {
+    width: 11px;
+    height: 11px;
+  }
+
+  /* 玩家 Hero 专属视觉保留清晰尺寸 */
+  .seat--hero {
+    /* 玩家在移动端稍作高亮并单独留足宽度感 */
+    grid-column: span 1;
+  }
+
+  .seat--hero .seat__cards .card {
+    width: 34px;
+    height: 48px;
+  }
+
+  .seat--hero .seat__cards .card .card__rank {
+    font-size: 14px;
+  }
+
+  .seat--hero .seat__cards .card .card__suit-svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .seat__line {
+    font-size: 11px;
+    gap: 4px;
+  }
+
+  .seat__stack-value {
+    font-size: 13px;
+  }
+
+  .seat__bet {
+    padding: 0 5px;
+    font-size: 11px;
+  }
+
+  .seat__buyin-meta {
+    font-size: 10px;
+  }
+
+  .seat__hand {
+    font-size: 11px;
+  }
+
+  /* 操作面板紧凑化，确保第一时间进入视野 */
+  .table-actions {
+    padding: 10px;
+    gap: 8px;
+  }
+
+  .table-actions__btns-grid {
+    gap: 6px;
+  }
+
+  .table-button {
+    padding: 8px 10px;
+    min-height: 46px;
+    font-size: 13px;
+  }
+
+  /* 分析卡片紧凑排版 */
+  .table-equity-panel {
+    padding: 10px;
+    gap: 10px;
+  }
+
+  .table-equity-cards {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+  }
+
+  .table-equity-card {
+    padding: 6px 8px;
+  }
+
+  .table-equity-analysis__grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+  }
+
+  .table-equity-grid-item {
+    padding: 6px 8px;
+  }
+
+  .table-equity-analysis__draws-grid {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+}
+
