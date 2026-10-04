@@ -4,8 +4,8 @@ import { CardView } from '../components/Card';
 import { decideBotAction, estimateEquity, toScenario } from '../poker/ai';
 import type { Card as CardType } from '../poker/cards';
 import { analyzeScenario } from '../poker/analyzer';
-import { analyzeHeroDraws } from '../poker/draws';
-import { describeHandValue, evaluateBestHand } from '../poker/evaluator';
+import { analyzeDraws } from '../poker/draws';
+import { HAND_CATEGORY_LABELS, describeHandValue, evaluateBestHand } from '../poker/evaluator';
 import { summarizeFiveCardHand } from '../poker/handType';
 import { createRng } from '../poker/rng';
 import {
@@ -316,12 +316,23 @@ export function TablePage() {
 
     const fiveCard = summarizeFiveCardHand(scenario);
     const scenarioData = analyzeScenario(scenario);
-    const drawData = analyzeHeroDraws(scenario);
+    const drawsAll = analyzeDraws(scenario);
 
-    // 筛选出对手能超越 Hero 的代表性威胁牌型（前 3 个）
-    const aheadCategories = scenarioData.byCategory
-      .filter((cat) => cat.aheadCount > 0)
-      .slice(0, 3);
+    // 对手所有可能的成牌分布（客观数学统计，不考虑下注）
+    const opponentMadeHands = scenarioData.byCategory
+      .filter((cat) => cat.totalCount > 0)
+      .map((cat) => ({
+        category: cat.category,
+        label: HAND_CATEGORY_LABELS[cat.category],
+        totalCombos: cat.totalCount,
+        probability: cat.totalCount / scenarioData.totalOpponentCombos,
+        aheadCombos: cat.aheadCount,
+        aheadProbability: cat.aheadProbability,
+      }))
+      .sort((a, b) => b.totalCombos - a.totalCombos);
+
+    // 对手可能的听牌分布（客观数学统计，不考虑下注）
+    const opponentDrawRows = drawsAll.opponent.rows;
 
     // 当前五张成牌评价
     const bestHand = evaluateBestHand([...table.board, ...hero.hole]);
@@ -329,8 +340,10 @@ export function TablePage() {
     return {
       fiveCard,
       scenarioData,
-      drawData,
-      aheadCategories,
+      drawData: drawsAll.hero,
+      opponentDraws: drawsAll.opponent,
+      opponentDrawRows,
+      opponentMadeHands,
       bestHand,
     };
   }, [heroCards, cards]);
@@ -751,26 +764,67 @@ export function TablePage() {
                 </div>
               )}
 
-              {/* 3. 对手潜在领先威胁分布 */}
-              {handAnalysis.aheadCategories.length > 0 && (
+              {/* 3. 对手会有哪些成牌（客观全组合分布，不考虑下注） */}
+              {handAnalysis.opponentMadeHands.length > 0 && (
                 <div className="table-equity-analysis__section">
-                  <span className="table-equity-analysis__tag">对手主要领先牌型</span>
-                  <div className="table-equity-analysis__threats">
-                    {handAnalysis.aheadCategories.map((cat) => (
-                      <div key={cat.category} className="table-equity-threat-item">
-                        <span className="table-equity-threat-item__name">
-                          {cat.category in TABLE_CONSTANTS ? '' : ''}
-                          {cat.groups[0]?.label ? `${cat.groups[0].label}` : `牌型 ${cat.category}`}
-                        </span>
-                        <span className="table-equity-threat-item__bar-wrap">
+                  <div className="table-equity-analysis__section-head">
+                    <span className="table-equity-analysis__tag">对手成牌分布（客观底牌全组合）</span>
+                    <span className="muted small">不考虑下注行为，基于全部未发手牌统计</span>
+                  </div>
+                  <div className="table-equity-analysis__grid">
+                    {handAnalysis.opponentMadeHands.map((item) => (
+                      <div key={item.category} className="table-equity-grid-item">
+                        <div className="table-equity-grid-item__top">
+                          <span className="table-equity-grid-item__name">{item.label}</span>
+                          <span className="table-equity-grid-item__prob">
+                            {formatPercent(item.probability, 1)}
+                          </span>
+                        </div>
+                        <div className="table-equity-threat-item__bar-wrap">
                           <span
-                            className="table-equity-threat-item__bar"
-                            style={{ width: `${Math.min(100, cat.aheadProbability * 100 * 2.5)}%` }}
+                            className={`table-equity-threat-item__bar ${item.aheadCombos > 0 ? 'table-equity-threat-item__bar--danger' : 'table-equity-threat-item__bar--safe'}`}
+                            style={{ width: `${Math.min(100, item.probability * 100 * 1.5)}%` }}
                           />
-                        </span>
-                        <span className="table-equity-threat-item__prob">
-                          {formatPercent(cat.aheadProbability, 1)}
-                        </span>
+                        </div>
+                        <div className="table-equity-grid-item__sub muted small">
+                          {item.aheadCombos > 0 ? (
+                            <span className="text-danger">{item.aheadCombos} 组压制你 ({formatPercent(item.aheadProbability, 1)})</span>
+                          ) : (
+                            <span className="text-safe">0 组压制（你领先）</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 4. 对手会有哪些听牌（客观听牌分布，不考虑下注） */}
+              {handAnalysis.opponentDrawRows.length > 0 && (
+                <div className="table-equity-analysis__section">
+                  <div className="table-equity-analysis__section-head">
+                    <span className="table-equity-analysis__tag">对手潜在听牌分布</span>
+                    <span className="muted small">对手持有顺子/同花听牌的概率与后续补成率</span>
+                  </div>
+                  <div className="table-equity-analysis__draws-grid">
+                    {handAnalysis.opponentDrawRows.map((draw) => (
+                      <div key={draw.kind} className="table-equity-draw-card">
+                        <div className="table-equity-draw-card__header">
+                          <strong className="table-equity-draw-card__title">{draw.label}</strong>
+                          <span className="table-equity-draw-card__badge">
+                            持有率 {formatPercent(draw.probability, 1)}
+                          </span>
+                        </div>
+                        <div className="table-equity-draw-card__details muted small">
+                          <span>包含 {draw.comboCount} 组对手手牌</span>
+                          <span>
+                            {table.board.length === 3 ? (
+                              <>发完补成率 <strong>{formatPercent(draw.averageFinalProbability, 1)}</strong></>
+                            ) : (
+                              <>河牌补成率 <strong>{formatPercent(draw.averageNextProbability, 1)}</strong></>
+                            )}
+                          </span>
+                        </div>
                       </div>
                     ))}
                   </div>
