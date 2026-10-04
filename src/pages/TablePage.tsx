@@ -5,7 +5,7 @@ import { decideBotAction, estimateEquity, toScenario } from '../poker/ai';
 import type { Card as CardType } from '../poker/cards';
 import { analyzeScenario } from '../poker/analyzer';
 import { analyzeDraws } from '../poker/draws';
-import { HAND_CATEGORY_LABELS, describeHandValue, evaluateBestHand } from '../poker/evaluator';
+import { HAND_CATEGORY_LABELS, HandCategory, describeHandValue, evaluateBestHand } from '../poker/evaluator';
 import { summarizeFiveCardHand } from '../poker/handType';
 import { createRng } from '../poker/rng';
 import {
@@ -318,9 +318,9 @@ export function TablePage() {
     const scenarioData = analyzeScenario(scenario);
     const drawsAll = analyzeDraws(scenario);
 
-    // 对手所有可能的成牌分布（客观数学统计，不考虑下注）
+    // 对手所有可能的成牌分布（客观数学统计，不考虑下注；排除无成牌的高牌）
     const opponentMadeHands = scenarioData.byCategory
-      .filter((cat) => cat.totalCount > 0)
+      .filter((cat) => cat.category !== HandCategory.HighCard && cat.totalCount > 0)
       .map((cat) => ({
         category: cat.category,
         label: HAND_CATEGORY_LABELS[cat.category],
