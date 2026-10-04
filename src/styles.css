@@ -2237,6 +2237,21 @@ h3 {
   gap: 6px;
 }
 
+.seat__buyin-meta {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.2;
+  margin-top: -2px;
+}
+
+.table-actions__buyin-total {
+  margin-left: 4px;
+}
+
+.table-actions__buyin-total strong {
+  color: var(--text);
+}
+
 .seat__stack-value {
   font-variant-numeric: tabular-nums;
   font-size: 15px;

@@ -71,6 +71,8 @@ export interface Seat {
   hole: [Card, Card] | null;
   folded: boolean;
   allIn: boolean;
+  /** 本场对局累计买入总筹码（初始买入 + 历次补码），用于统计玩家与各机器人总带入。 */
+  totalBuyIn: number;
   /** 本街已投入。 */
   committedStreet: number;
   /** 本手累计投入（决定边池）。 */
@@ -258,6 +260,7 @@ export function createTable(options: TableOptions = {}): TableState {
       name: i === 0 ? HERO_NAME : botName(i),
       isHero: i === 0,
       stack: TABLE_CONSTANTS.BUY_IN,
+      totalBuyIn: TABLE_CONSTANTS.BUY_IN,
       hole: null,
       folded: false,
       allIn: false,
@@ -321,10 +324,18 @@ export function startHand(state: TableState): TableState {
 
   // 补码：筹码太少的座位自动补到买入上限，避免出现「盲注都下不起」的局面。
   for (const seat of next.seats) {
+    if (seat.totalBuyIn === undefined) {
+      seat.totalBuyIn = TABLE_CONSTANTS.BUY_IN;
+    }
     if (seat.stack < TABLE_CONSTANTS.AUTO_REBUY_THRESHOLD) {
       const added = TABLE_CONSTANTS.BUY_IN - seat.stack;
       seat.stack = TABLE_CONSTANTS.BUY_IN;
-      log(next, seat.index, `${seat.name} 补码 ${added} 筹码（回到 ${TABLE_CONSTANTS.BUY_IN}）`);
+      seat.totalBuyIn += added;
+      log(
+        next,
+        seat.index,
+        `${seat.name} 自动补码 ${added}（总带入 ${seat.totalBuyIn}，回到 ${TABLE_CONSTANTS.BUY_IN}）`,
+      );
     }
   }
 
@@ -809,9 +820,17 @@ export function rebuy(state: TableState, seatIndex: number): TableState {
   if (!seat || seat.stack >= TABLE_CONSTANTS.BUY_IN) return state;
   const next = cloneState(state);
   const target = next.seats[seatIndex];
+  if (target.totalBuyIn === undefined) {
+    target.totalBuyIn = TABLE_CONSTANTS.BUY_IN;
+  }
   const added = TABLE_CONSTANTS.BUY_IN - target.stack;
   target.stack = TABLE_CONSTANTS.BUY_IN;
-  log(next, seatIndex, `${target.name} 补码 ${added} 筹码（回到 ${TABLE_CONSTANTS.BUY_IN}）`);
+  target.totalBuyIn += added;
+  log(
+    next,
+    seatIndex,
+    `${target.name} 补码 ${added} 筹码（总带入 ${target.totalBuyIn}，回到 ${TABLE_CONSTANTS.BUY_IN}）`,
+  );
   next.rngSeed = state.rngSeed;
   return next;
 }

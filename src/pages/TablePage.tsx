@@ -239,6 +239,11 @@ function SeatCard({
           <span className="seat__bet">已下 {seat.committedStreet}</span>
         )}
       </div>
+      {Boolean(seat.totalBuyIn && seat.totalBuyIn > TABLE_CONSTANTS.BUY_IN) && (
+        <div className="seat__buyin-meta small muted">
+          总带入 {seat.totalBuyIn}（补 +{seat.totalBuyIn - TABLE_CONSTANTS.BUY_IN}）
+        </div>
+      )}
 
       {hand && <div className="seat__hand">{describeHandValue(hand)}</div>}
       {!hand && seat.lastAction && (
@@ -501,7 +506,14 @@ export function TablePage() {
               </button>
               <span className="muted small table-actions__stack-hint">
                 你的筹码：<strong>{hero.stack}</strong>
-                {canRebuy(table, 0) ? '（可补码回到 200）' : ''}
+                {hero.totalBuyIn > TABLE_CONSTANTS.BUY_IN ? (
+                  <span className="table-actions__buyin-total">
+                    （本场累计带入：<strong>{hero.totalBuyIn}</strong>，补码 +{hero.totalBuyIn - TABLE_CONSTANTS.BUY_IN}）
+                  </span>
+                ) : (
+                  <span>（本场初始带入：{hero.totalBuyIn || TABLE_CONSTANTS.BUY_IN}）</span>
+                )}
+                {canRebuy(table, 0) ? ' · 可补码回到 200' : ''}
               </span>
             </div>
           </div>
