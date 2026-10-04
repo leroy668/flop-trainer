@@ -37,6 +37,28 @@ const SPEEDS: { id: string; label: string; delay: number }[] = [
   { id: 'fast', label: '快', delay: 220 },
 ];
 
+const SETTINGS = {
+  delay: 'flop-trainer:table-delay',
+  equity: 'flop-trainer:table-equity',
+  reveal: 'flop-trainer:table-reveal',
+};
+
+function readSetting(key: string, fallback: string): string {
+  try {
+    return localStorage.getItem(key) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeSetting(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // file:// 下可能拿不到 localStorage，忽略即可。
+  }
+}
+
 const ACTION_HINTS: Record<ActionType, string> = {
   fold: '放弃这一手',
   check: '不下注，看下一张',
@@ -179,10 +201,17 @@ export function TablePage() {
     table: createTable({ seed: (Date.now() ^ 0x5f3759df) >>> 0 }),
     history: [],
   }));
-  const [delay, setDelay] = useState(SPEEDS[1].delay);
-  const [showAll, setShowAll] = useState(false);
-  const [showEquity, setShowEquity] = useState(true);
+  const [delay, setDelay] = useState(() => {
+    const saved = Number(readSetting(SETTINGS.delay, String(SPEEDS[1].delay)));
+    return SPEEDS.some((speed) => speed.delay === saved) ? saved : SPEEDS[1].delay;
+  });
+  const [showAll, setShowAll] = useState(() => readSetting(SETTINGS.reveal, '0') === '1');
+  const [showEquity, setShowEquity] = useState(() => readSetting(SETTINGS.equity, '1') === '1');
   const rngRef = useRef(createRng((Date.now() ^ 0x9e3779b9) >>> 0));
+
+  useEffect(() => writeSetting(SETTINGS.delay, String(delay)), [delay]);
+  useEffect(() => writeSetting(SETTINGS.equity, showEquity ? '1' : '0'), [showEquity]);
+  useEffect(() => writeSetting(SETTINGS.reveal, showAll ? '1' : '0'), [showAll]);
 
   const { table } = ui;
   const hero = table.seats[0];
@@ -242,6 +271,9 @@ export function TablePage() {
           </Link>
           <Link className="button button--ghost" to="/flop-types">
             翻牌牌型图鉴
+          </Link>
+          <Link className="button button--ghost" to="/table">
+            模拟牌桌
           </Link>
           <button type="button" className="button button--ghost" onClick={startNewGame}>
             重开牌桌
@@ -381,7 +413,9 @@ export function TablePage() {
             </div>
             <div className="actions">
               <span className="muted small">
-                翻牌前只能用 5 / 10 / 20 加注，而且加注后必须留至少 1 个筹码，所以这里没有「全下」。
+                {table.street === 'preflop'
+                  ? '翻牌前只能用 5 / 10 / 20 加注，而且加注后必须留至少 1 个筹码，所以这里没有「全下」；每条街最多加注 3 次。'
+                  : '翻牌后可以全下（会把剩余筹码一次推进去，也算一次加注）；每条街最多加注 3 次。'}
               </span>
             </div>
           </>
@@ -408,7 +442,7 @@ export function TablePage() {
               {speed.label}
             </button>
           ))}
-          <label className="switch switch--compact">
+          <label className="switch switch--compact table-switch table-switch--equity">
             <input
               type="checkbox"
               checked={showEquity}
@@ -419,7 +453,7 @@ export function TablePage() {
             </span>
             <span className="switch__label">显示我的胜率估计</span>
           </label>
-          <label className="switch switch--compact">
+          <label className="switch switch--compact table-switch table-switch--reveal">
             <input
               type="checkbox"
               checked={showAll}

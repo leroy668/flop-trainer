@@ -32,6 +32,8 @@ window.addEventListener('unhandledrejection', function (e) {
 var STRATEGY = ${JSON.stringify(option('strategy') ?? 'call')};
 var HANDS = ${Number(option('hands') ?? 3)};
 var ONCE = ${flag('once') ? 'true' : 'false'};
+var SPEED = ${JSON.stringify(option('speed'))};
+var finalSeats = 0;
 function txt(el) { return el ? el.innerText.replace(/\\s+/g, ' ').trim() : null; }
 function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 function chipSum() {
@@ -54,6 +56,13 @@ function finish(payload) {
     await sleep(50);
   }
   var out = { tries: tries, strategy: STRATEGY };
+  if (SPEED) {
+    var chips = [].slice.call(document.querySelectorAll('.table-toolbar .chip'));
+    var hit = chips.find(function (c) { return txt(c) === SPEED; });
+    if (hit) hit.click();
+    out.speed = SPEED;
+    out.speedHit = Boolean(hit);
+  }
   out.title = txt(document.querySelector('h1'));
   out.header = txt(document.querySelector('.page__header p'));
   out.seatNames = [].map.call(document.querySelectorAll('.seat__name'), txt);
@@ -98,6 +107,44 @@ function finish(payload) {
     var r = el.getBoundingClientRect();
     return [Math.round(r.width), Math.round(r.height)];
   })();
+  // 开关状态要能落到 localStorage（下次打开还是这个设置）。
+  var revealSwitch = document.querySelector('.table-switch--reveal input');
+  var equitySwitch = document.querySelector('.table-switch--equity input');
+  out.botCardsHiddenBefore = document.querySelectorAll('.seat .card--hidden').length;
+  if (revealSwitch) {
+    revealSwitch.click();
+    await sleep(60);
+    out.revealStored = window.localStorage.getItem('flop-trainer:table-reveal');
+    out.botCardsHiddenAfterReveal = document.querySelectorAll('.seat .card--hidden').length;
+    revealSwitch.click();
+    await sleep(60);
+    out.revealStoredBack = window.localStorage.getItem('flop-trainer:table-reveal');
+  }
+  if (equitySwitch) {
+    equitySwitch.click();
+    await sleep(60);
+    out.equityPanelAfterOff = Boolean(document.querySelector('.table-equity'));
+    equitySwitch.click();
+    await sleep(60);
+    out.equityStored = window.localStorage.getItem('flop-trainer:table-equity');
+  }
+  var fastChip = [].slice
+    .call(document.querySelectorAll('.table-toolbar .chip'))
+    .find(function (c) { return txt(c) === '快'; });
+  if (fastChip) {
+    fastChip.click();
+    await sleep(60);
+    out.delayStored = window.localStorage.getItem('flop-trainer:table-delay');
+    var normalChip = [].slice
+      .call(document.querySelectorAll('.table-toolbar .chip'))
+      .find(function (c) { return txt(c) === '正常'; });
+    if (normalChip) normalChip.click();
+  }
+  out.headerLinks = [].map.call(
+    document.querySelectorAll('.page__header-actions a'),
+    function (a) { return txt(a) + '→' + a.getAttribute('href'); },
+  );
+  out.preflopHint = txt(document.querySelector('.table-actions .actions .muted.small'));
   if (ONCE) { out.errors = errors; return finish(out); }
 
   var chips = chipSum();
@@ -106,10 +153,14 @@ function finish(payload) {
   var handsPlayed = 0;
   var preflopAllInButtons = 0;
   var allInClicks = 0;
+  var folds = 0;
+  var hints = [];
+  var maxPot = 0;
+  var maxSeats = 0;
   var samples = [];
   var sawFlop = 0, sawTurn = 0, sawRiver = 0, sawShowdown = 0;
 
-  for (var step = 0; step < 1500; step += 1) {
+  for (var step = 0; step < 20000; step += 1) {
     var live = [].slice.call(document.querySelectorAll('.table-button'));
     if (live.length > 0) {
       var street = txt(document.querySelector('.table-pot .street-badge'));
@@ -128,7 +179,14 @@ function finish(payload) {
       else if (STRATEGY === 'allin') {
         pick = allinButton || byClass('call') || byClass('check') || byClass('fold');
         if (pick === allinButton) allInClicks += 1;
+      } else if (STRATEGY === 'random') {
+        // 随机打法：把合法动作全点一遍，专门用来撞崩溃与非法状态。
+        pick = live[Math.floor(Math.random() * live.length)];
+        if (pick === allinButton) allInClicks += 1;
+        if (pick && pick.classList.contains('table-button--fold')) folds += 1;
       } else pick = byClass('check') || byClass('call') || byClass('fold');
+      var hint = txt(document.querySelector('.table-actions .actions .muted.small'));
+      if (hint && hints.indexOf(street + ' | ' + hint) < 0) hints.push(street + ' | ' + hint);
       if (samples.length < 6) {
         samples.push(street + ' | ' + [].map.call(live, txt).join(' / ') + ' → ' + txt(pick));
       }
@@ -152,9 +210,17 @@ function finish(payload) {
     if (now < chips) losses += chips - now;
     if (now > chips) injections += now - chips;
     chips = now;
+    maxPot = Math.max(maxPot, Number(txt(document.querySelector('.table-pot__value'))) || 0);
+    maxSeats = Math.max(maxSeats, document.querySelectorAll('.seat').length);
   }
 
   out.handsPlayed = handsPlayed;
+  out.folds = folds;
+  out.hints = hints.slice(0, 4);
+  out.maxPot = maxPot;
+  out.maxSeats = maxSeats;
+  out.finalSeats = document.querySelectorAll('.seat').length;
+  out.marker = 'done';
   out.samples = samples;
   out.preflopAllInButtons = preflopAllInButtons;
   out.allInClicks = allInClicks;
@@ -194,7 +260,7 @@ const dump = execFileSync(
     '--headless=new',
     '--disable-gpu',
     `--window-size=${winW},${winH}`,
-    '--virtual-time-budget=120000',
+    '--virtual-time-budget=600000',
     '--allow-file-access-from-files',
     '--dump-dom',
     url,

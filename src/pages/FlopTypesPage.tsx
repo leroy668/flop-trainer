@@ -223,6 +223,9 @@ export function FlopTypesPage() {
           </p>
         </div>
         <div className="page__header-actions">
+          <Link className="button button--ghost" to="/table">
+            模拟牌桌
+          </Link>
           <Link className="button button--ghost" to="/">
             返回训练
           </Link>

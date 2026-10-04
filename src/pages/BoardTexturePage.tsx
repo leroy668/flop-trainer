@@ -207,6 +207,9 @@ export function BoardTexturePage() {
           <Link className="button button--ghost" to="/flop-types">
             翻牌牌型图鉴
           </Link>
+          <Link className="button button--ghost" to="/table">
+            模拟牌桌
+          </Link>
           <Link className="button button--ghost" to="/">
             返回训练
           </Link>
