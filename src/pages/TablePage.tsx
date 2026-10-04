@@ -303,10 +303,10 @@ export function TablePage() {
   const cards = boardKey(table.board);
   const heroCards = hero.hole ? boardKey(hero.hole) : '';
   const equity = useMemo(() => {
-    if (!hero.hole || table.result) return null;
+    if (!hero.hole) return null;
     return estimateEquity(hero.hole, table.board, Math.max(1, opponents));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [heroCards, cards, opponents, table.result]);
+  }, [heroCards, cards, opponents]);
 
   // 深度牌力与对手威胁分析（翻牌后）
   const handAnalysis = useMemo(() => {
@@ -661,10 +661,10 @@ export function TablePage() {
         </div>
       </section>
 
-      {showEquity && equity && !table.result && (
+      {showEquity && equity && (
         <section className="panel table-equity-panel">
           <div className="table-equity-panel__header">
-            <h2>你的牌力估计与分析</h2>
+            <h2>你的牌力估计与分析{hero.folded ? '（你已弃牌）' : ''}</h2>
             <span className="table-equity-panel__badge">
               {table.board.length < 3
                 ? '翻牌前启发式'
