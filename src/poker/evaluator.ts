@@ -289,7 +289,8 @@ export function describeHandValue(value: HandValue): string {
     case HandCategory.Flush:
       return `${label}，${t.map(card).join('')}`;
     case HandCategory.FullHouse:
-      return `${label}，${card(t[0])}带${card(t[1])}`;
+      // 「三条 X 带一对 Y」比「X 带 Y」直观得多，一眼能看出哪部分是三条。
+      return `${label}：三条${card(t[0])} + 一对${card(t[1])}`;
     case HandCategory.Quads:
       return `${label}${card(t[0])}，${card(t[1])}踢脚`;
     case HandCategory.StraightFlush:

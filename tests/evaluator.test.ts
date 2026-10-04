@@ -7,6 +7,7 @@ import {
 } from '../src/poker/cards';
 import {
   HandCategory,
+  describeHandValue,
   evaluateFiveCards,
 } from '../src/poker/evaluator';
 import { compareHandValues } from '../src/poker/compare';
@@ -52,6 +53,17 @@ describe('五张牌评价：牌型识别', () => {
   it('张数错误时抛出异常', () => {
     expect(() => evaluateFiveCards(cards('Ah Kd Qc 9s'))).toThrow();
     expect(() => evaluateFiveCards(cards('Ah Kd Qc 9s 7d 2c'))).toThrow();
+  });
+
+  it('葫芦的中文描述直接点名「三条 + 一对」，不写「X 带 Y」', () => {
+    // 6 的三条 + Q 的一对
+    expect(describeHandValue(evaluateFiveCards(cards('6h 6s 6d Qc Qd')))).toBe(
+      '葫芦：三条6 + 一对Q',
+    );
+    // 公共牌更大时，三条部分必须取更大的那组
+    expect(describeHandValue(evaluateFiveCards(cards('Ah As Ad Kc Kd')))).toBe(
+      '葫芦：三条A + 一对K',
+    );
   });
 });
 

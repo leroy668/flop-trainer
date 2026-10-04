@@ -205,7 +205,7 @@ describe('固定场景的转牌 / 河牌结果', () => {
 
   it('河牌成葫芦后只有 44 个组合能压过', () => {
     const a = analyzeScenario(street('As Ad', 'Ah Kc Kd Ks 2h'));
-    expect(describeHandValue(a.heroHandValue)).toBe('葫芦，A带K');
+    expect(describeHandValue(a.heroHandValue)).toBe('葫芦：三条A + 一对K');
     expect(a.aheadCount).toBe(44);
     expect(a.tieCount).toBe(0);
   });
