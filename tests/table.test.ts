@@ -170,15 +170,46 @@ describe('牌桌开局', () => {
 /* ------------------------------------------------------------------ */
 
 describe('动作合法性', () => {
-  it('翻牌前的下注按钮只有 5 / 10 / 20，没有全下', () => {
+  it('翻牌前只有「跟注 10」或「加注到 20」（大盲 10，20 封顶），没有全下', () => {
     const state = createTable({ seed: 1 });
     const legal = legalActions(state, 3);
     expect(legal.filter((action) => action.type === 'bet').map((action) => action.amount)).toEqual([
-      5, 10, 20,
+      20,
     ]);
+    expect(legal.find((action) => action.type === 'bet')!.label).toBe('加注到 20');
     expect(actionTypes(state, 3)).not.toContain('allin');
     expect(legal[0].type).toBe('fold');
     expect(legal.some((action) => action.type === 'call' && action.amount === 10)).toBe(true);
+  });
+
+  it('下注 / 加注的档位就是本街投入，永远不超过 20', () => {
+    // 翻牌后：0 → 5 → 10 → 20 都只是「本街投入」，一次也没有超过封顶。
+    let state = createTable({ seed: 11 });
+    while (state.street === 'preflop') {
+      const seat = state.actor!;
+      const legal = legalActions(state, seat);
+      state = applyAction(
+        state,
+        seat,
+        legal.find((a) => a.type === 'call') ?? legal.find((a) => a.type === 'check')!,
+      );
+    }
+    const first = state.actor!;
+    for (const [seat, level] of [
+      [first, 5],
+      [(first + 1) % 4, 10],
+      [(first + 2) % 4, 20],
+    ] as const) {
+      const action = legalActions(state, seat).find((a) => a.type === 'bet' && a.amount === level);
+      expect(action, `${seat} 应该能下注到 ${level}`).toBeDefined();
+      state = applyAction(state, seat, action!);
+      expect(state.seats[seat].committedStreet).toBe(level);
+      expect(state.currentBet).toBe(level);
+    }
+    // 已经到 20 封顶，没人还能再加注。
+    const capped = legalActions(state, state.actor!);
+    expect(capped.some((action) => action.type === 'bet')).toBe(false);
+    expect(capped.some((action) => action.type === 'allin')).toBe(true);
   });
 
   it('翻牌前筹码不足以跟注时只能弃牌', () => {
@@ -201,31 +232,41 @@ describe('动作合法性', () => {
     expect(actionTypes(state, state.actor!)).toContain('allin');
   });
 
-  it('每条街最多加注 3 次，之后只能跟注或弃牌', () => {
+  it('翻牌前加到 20 就封顶，之后只能跟注或弃牌', () => {
     let state = createTable({ seed: 2 });
     expect(state.actor).toBe(3);
-    state = applyAction(state, 3, { type: 'bet', amount: 10 });
+    state = applyAction(state, 3, { type: 'bet', amount: 20 });
     expect(state.raiseCount).toBe(1);
-    state = applyAction(state, 0, { type: 'bet', amount: 10 });
-    expect(state.raiseCount).toBe(2);
-    state = applyAction(state, 1, { type: 'bet', amount: 10 });
-    expect(state.raiseCount).toBe(3);
-    const types = actionTypes(state, 2);
+    expect(state.seats[3].committedStreet).toBe(20);
+    const types = actionTypes(state, 0);
     expect(types).not.toContain('bet');
     expect(types).not.toContain('allin');
     expect(types).toContain('call');
     expect(types).toContain('fold');
   });
 
-  it('加注金额只能是自己面前的增量 5 / 10 / 20', () => {
+  it('加注到 20 只需要补「20 − 已经投入的部分」，跟注也不会超过封顶', () => {
     const state = createTable({ seed: 2 });
-    const raise = legalActions(state, 3).find(
-      (action) => action.type === 'bet' && action.amount === 10,
-    )!;
+    // 3 号位是第一个说话的（大盲左手边），本街还没投入过。
+    const raise = legalActions(state, 3).find((action) => action.type === 'bet')!;
+    expect(raise.amount).toBe(20);
     const next = applyAction(state, 3, raise);
     expect(next.seats[3].committedStreet).toBe(20);
     expect(next.currentBet).toBe(20);
     expect(next.seats[3].stack).toBe(180);
+
+    // 大盲已经投入 10，轮到它时加到 20 只需要再补 10。
+    let blindState = createTable({ seed: 2 });
+    blindState = applyAction(blindState, 3, { type: 'call' });
+    blindState = applyAction(blindState, 0, { type: 'call' });
+    blindState = applyAction(blindState, 1, { type: 'call' });
+    expect(blindState.actor).toBe(2);
+    expect(blindState.seats[2].committedStreet).toBe(10);
+    const bbAction = legalActions(blindState, 2).find((action) => action.type === 'bet')!;
+    expect(bbAction.amount).toBe(20);
+    const afterBb = applyAction(blindState, 2, bbAction);
+    expect(afterBb.seats[2].committedStreet).toBe(20);
+    expect(afterBb.seats[2].stack).toBe(180);
   });
 
   it('非法动作会被拒绝', () => {
@@ -436,7 +477,6 @@ describe('本桌不是标准无限注德州扑克', () => {
         const seatIndex = state.actor;
         const seat = state.seats[seatIndex];
         const legal = legalActions(state, seatIndex);
-        const toCall = Math.max(0, state.currentBet - seat.committedStreet);
         decisionPoints += 1;
 
         for (const action of legal) {
@@ -449,13 +489,17 @@ describe('本桌不是标准无限注德州扑克', () => {
           if (action.type === 'bet') {
             betAmounts.add(action.amount!);
             streetsWithBet.add(state.street);
-            // 加注金额是「在你面前再加的增量」，总额 = 跟注额 + 增量。
+            // 档位 = 本街这一手你在自己面前的总投入，只有 5 / 10 / 20，20 封顶。
             expect([5, 10, 20]).toContain(action.amount);
+            expect(action.amount).toBeLessThanOrEqual(20);
+            expect(action.amount).toBeGreaterThan(state.currentBet);
             expect(action.label).toBe(
-              `${state.currentBet > 0 ? '加注' : '下注'} ${action.amount}（到 ${
-                seat.committedStreet + toCall + action.amount!
-              }）`,
+              `${state.currentBet > 0 ? '加注到' : '下注'} ${action.amount}`,
             );
+            // 补的筹码 = 档位 − 已投入，补完之后正好落在档位上。
+            const delta = action.amount! - seat.committedStreet;
+            expect(delta).toBeGreaterThan(0);
+            expect(seat.committedStreet + delta).toBe(action.amount);
           }
           if (action.type === 'allin') {
             allinStreets.add(state.street);
@@ -475,14 +519,14 @@ describe('本桌不是标准无限注德州扑克', () => {
     }
 
     expect(decisionPoints).toBeGreaterThan(200);
-    // 三种额度都必须真的出现过，且不可能出现第四种。
+    // 三个档位都必须真的出现过，且不可能出现第四个（更不可能出现 25 或 30）。
     expect([...betAmounts].sort((a, b) => a - b)).toEqual([5, 10, 20]);
     // 下注 / 加注在四条街都有；全下只在翻牌之后出现。
     expect([...streetsWithBet].sort()).toEqual(['flop', 'preflop', 'river', 'turn']);
     expect([...allinStreets].sort()).toEqual(['flop', 'river', 'turn']);
     expect([...streetsWithAllIn]).not.toContain('preflop');
-    // 按钮文案长这样（翻牌前）：弃牌 / 跟注 10 / 加注 5（到 15）…
-    expect([...labels].some((label) => label === 'preflop 加注 5（到 15）')).toBe(true);
+    // 按钮文案长这样（翻牌前）：弃牌 / 跟注 10 / 加注到 20…
+    expect([...labels].some((label) => label === 'preflop 加注到 20')).toBe(true);
     expect([...labels].some((label) => label === 'preflop 跟注 10')).toBe(true);
     expect([...labels].every((label) => !label.startsWith('preflop 全下'))).toBe(true);
   }, 60000);

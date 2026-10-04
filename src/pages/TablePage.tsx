@@ -6,6 +6,7 @@ import type { Card as CardType } from '../poker/cards';
 import { describeHandValue } from '../poker/evaluator';
 import { createRng } from '../poker/rng';
 import {
+  TABLE_BET_CAP,
   TABLE_CONSTANTS,
   TABLE_STREET_LABELS,
   applyAction,
@@ -74,8 +75,8 @@ const ACTION_HINTS: Record<ActionType, string> = {
   fold: '放弃这一手',
   check: '不下注，看下一张',
   call: '跟上当前的注',
-  bet: '主动加注',
-  allin: '把剩下的筹码全部推进去（仅翻牌后）',
+  bet: '下注 / 加注：档位 5 / 10 / 20，指的是本街你在自己面前的总投入，20 封顶',
+  allin: '把剩下的筹码全部推进去（仅翻牌后，不受 20 封顶限制）',
 };
 
 interface UiState {
@@ -294,7 +295,8 @@ export function TablePage() {
             {botCount} 个机器人，人数可以加减），买入上限{' '}
             {TABLE_CONSTANTS.BUY_IN} 筹码，盲注 {TABLE_CONSTANTS.SMALL_BLIND}/
             {TABLE_CONSTANTS.BIG_BLIND}，下注 / 加注只有{' '}
-            {TABLE_CONSTANTS.BET_SIZES.join(' / ')} 三种额度，{' '}
+            {TABLE_CONSTANTS.BET_SIZES.join(' / ')} 三档、<strong>{TABLE_BET_CAP} 封顶</strong>
+            （档位 = 本街你在自己面前的总投入），{' '}
             <strong>翻牌前禁止全下，翻牌后才能全下</strong>。
           </p>
         </div>
@@ -451,12 +453,12 @@ export function TablePage() {
             <div className="actions">
               <span className="muted small">
                 {table.street === 'preflop'
-                  ? `翻牌前不会出现「全下」：只能弃牌 / 跟注 / 加注 ${TABLE_CONSTANTS.BET_SIZES.join(
+                  ? `翻牌前不会出现「全下」：下注 / 加注只有 ${TABLE_CONSTANTS.BET_SIZES.join(
                       ' / ',
-                    )}，加注后还必须留至少 1 个筹码。`
-                  : `翻牌后可以全下（一次推进全部剩余筹码，也算一次加注）。下注 / 加注额度同样只有 ${TABLE_CONSTANTS.BET_SIZES.join(
+                    )} 三档、本街投入 ${TABLE_BET_CAP} 封顶（大盲 10，所以这里只能跟注 10 或直接加到 ${TABLE_BET_CAP}），加注后还必须留至少 1 个筹码。`
+                  : `翻牌后可以全下（一次推进全部剩余筹码，不受 ${TABLE_BET_CAP} 封顶限制，也算一次加注）。下注 / 加注档位是 ${TABLE_CONSTANTS.BET_SIZES.join(
                       ' / ',
-                    )}。`}
+                    )}，本街最多投入 ${TABLE_BET_CAP}。`}
               </span>
             </div>
           </>
@@ -616,23 +618,26 @@ export function TablePage() {
             两人单挑时庄家下小盲、翻牌前先说话，翻牌后换大盲先说话（标准单挑规则）。
           </li>
           <li>
-            <strong>这不是标准无限注德州扑克</strong>，只有两条最重要的改动：下注 / 加注额度固定为{' '}
-            <strong>5 / 10 / 20</strong>；<strong>翻牌前禁止全下，翻牌后才能全下</strong>。
+            <strong>这不是标准无限注德州扑克</strong>，只有两条最重要的改动：下注 / 加注只有{' '}
+            <strong>5 / 10 / 20</strong> 三档（<strong>{TABLE_BET_CAP} 封顶</strong>）；
+            <strong>翻牌前禁止全下，翻牌后才能全下</strong>。
           </li>
           <li>
-            下注 / 加注的 5 / 10 / 20 指的是<strong>这一次在你面前再多放多少</strong>，
-            所以按钮上会写成「加注 20（到 30）」「加注 5（到 15）」——
-            多放的那部分永远是 5 / 10 / 20 之一。跟注则按对手的下注额补齐（跟注额可以是任何数）。
+            下注 / 加注的档位指的是<strong>你这一条街在自己面前一共投入多少</strong>，不是「再加多少」，
+            所以「{TABLE_BET_CAP}」就是上限：按钮上只会有「下注 10」「加注到 {TABLE_BET_CAP}」，
+            不会出现「加注 {TABLE_BET_CAP}（到 {TABLE_BET_CAP + 10}）」。跟注仍然要按对手的下注额补齐（跟注额可以是任何数）。
           </li>
           <li>
-            每条街最多加注 3 次（全下也算一次加注），加满之后只能跟注或弃牌。
+            因为 {TABLE_BET_CAP} 封顶之后没人能再加注，一条街最多就是 5 → 10 → 20 三次加注；
+            翻牌前大盲已经是 10，所以翻牌前最多只能加到 {TABLE_BET_CAP}（一次）。
+            封顶只约束「下注 / 加注」，翻牌后的<strong>梭哈</strong>不受它限制。
           </li>
           <li>
             <strong>翻牌前不能全下</strong>：加注后必须留至少 1 个筹码；
             翻牌前筹码不够跟注时只能弃牌。
           </li>
           <li>
-            <strong>翻牌后可以全下</strong>：把剩余筹码一次推进去。
+            <strong>翻牌后可以全下</strong>：把剩余筹码一次推进去，<strong>不受 {TABLE_BET_CAP} 封顶限制</strong>。
           </li>
           <li>
             摊牌按 7 张牌里最好的 5 张比大小；投入不等的全下按主池 / 边池分配，

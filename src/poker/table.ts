@@ -37,7 +37,10 @@ export const TABLE_CONSTANTS = {
   BUY_IN: 200,
   SMALL_BLIND: 5,
   BIG_BLIND: 10,
-  /** 允许的下注 / 加注增量。 */
+  /**
+   * 下注 / 加注的档位，也就是「这一条街里你在自己面前总共投入多少」。
+   * 只有 5 / 10 / 20 三档，**20 封顶**：不存在「加注 20（到 30）」这种按钮。
+   */
   BET_SIZES: [5, 10, 20] as const,
   /** 每条街最多加注次数（全下也算一次）。 */
   MAX_RAISES_PER_STREET: 3,
@@ -46,6 +49,9 @@ export const TABLE_CONSTANTS = {
 } as const;
 
 export const TABLE_BET_SIZES: readonly number[] = TABLE_CONSTANTS.BET_SIZES;
+
+/** 一条街里每人投入的封顶额（= 最大的那个档位）。 */
+export const TABLE_BET_CAP: number = Math.max(...TABLE_CONSTANTS.BET_SIZES);
 
 export type TableStreet = 'preflop' | 'flop' | 'turn' | 'river' | 'showdown';
 
@@ -393,21 +399,26 @@ export function legalActions(state: TableState, seatIndex: number): LegalAction[
     });
   }
 
-  // 翻牌前不能全下，所以加注后必须留至少 1 个筹码。
+  // 下注 / 加注的档位就是「本街你在自己面前的总投入」，20 封顶，
+  // 所以要补的筹码 = 档位 − 已经投入的部分。
   if (canRaise) {
-    for (const size of TABLE_CONSTANTS.BET_SIZES) {
-      const total = toCall + size;
-      const affordable = isPreflop ? total < seat.stack : total <= seat.stack;
+    for (const level of TABLE_CONSTANTS.BET_SIZES) {
+      if (level <= state.currentBet) continue;
+      const delta = level - seat.committedStreet;
+      if (delta <= 0) continue;
+      // 翻牌前不能全下，所以加注后必须留至少 1 个筹码。
+      const affordable = isPreflop ? delta < seat.stack : delta <= seat.stack;
       if (!affordable) continue;
       actions.push({
         type: 'bet',
-        amount: size,
-        label: `${raiseWord} ${size}（到 ${seat.committedStreet + total}）`,
+        amount: level,
+        label: `${raiseWord}${state.currentBet > 0 ? '到' : ''} ${level}`,
       });
     }
   }
 
-  if (!isPreflop && canRaise && seat.stack > toCall) {
+  // 全下不受 20 封顶（也不受加注次数）限制：翻牌后随时可以把剩下的筹码全推进去。
+  if (!isPreflop && seat.stack > toCall) {
     actions.push({ type: 'allin', amount: seat.stack, label: `全下 ${seat.stack}` });
   }
 
@@ -477,17 +488,20 @@ export function applyAction(
       break;
     }
     case 'bet': {
-      const increment = legal.amount ?? 0;
-      commit(seat, toCall + increment);
+      // `amount` 是本街的投入档位（5 / 10 / 20），要补的是「档位 − 已投入」。
+      const level = legal.amount ?? seat.committedStreet;
+      const delta = level - seat.committedStreet;
+      const isRaise = state.currentBet > 0;
+      commit(seat, delta);
       seat.hasActed = true;
-      seat.lastAction = `${next.currentBet > 0 ? '加注' : '下注'} 到 ${seat.committedStreet}`;
+      seat.lastAction = `${isRaise ? '加注到' : '下注'} ${seat.committedStreet}`;
       next.currentBet = seat.committedStreet;
       next.raiseCount += 1;
       resetActedExcept(next, seatIndex);
       log(
         next,
         seatIndex,
-        `${seat.name} ${state.currentBet > 0 ? '加注' : '下注'} 到 ${seat.committedStreet}（+${increment}）`,
+        `${seat.name} ${isRaise ? '加注到' : '下注'} ${seat.committedStreet}（再补 ${delta}）`,
       );
       break;
     }
