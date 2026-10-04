@@ -85,7 +85,9 @@ function finish(payload) {
   out.street = txt(document.querySelector('.street-badge'));
   out.logLines = document.querySelectorAll('.table-log li').length;
   out.ruleLines = document.querySelectorAll('.tax-note li').length;
-  out.heroEquityPanel = txt(document.querySelector('.table-equity'));
+  out.heroEquityPanel =
+    txt(document.querySelector('.table-equity-cards')) ||
+    txt(document.querySelector('.table-equity'));
   out.toolbarChips = [].map.call(document.querySelectorAll('.table-toolbar .chip'), txt);
 
   out.botChips = [].map.call(document.querySelectorAll('.table-bots .chip'), txt);

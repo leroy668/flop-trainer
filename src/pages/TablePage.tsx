@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CardView } from '../components/Card';
-import { decideBotAction, estimateEquity } from '../poker/ai';
+import { decideBotAction, estimateEquity, toScenario } from '../poker/ai';
 import type { Card as CardType } from '../poker/cards';
-import { describeHandValue } from '../poker/evaluator';
+import { analyzeScenario } from '../poker/analyzer';
+import { analyzeHeroDraws } from '../poker/draws';
+import { describeHandValue, evaluateBestHand } from '../poker/evaluator';
+import { summarizeFiveCardHand } from '../poker/handType';
 import { createRng } from '../poker/rng';
 import {
   TABLE_BET_CAP,
@@ -298,6 +301,33 @@ export function TablePage() {
     return estimateEquity(hero.hole, table.board, Math.max(1, opponents));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [heroCards, cards, opponents, table.result]);
+
+  // 深度牌力与对手威胁分析（翻牌后）
+  const handAnalysis = useMemo(() => {
+    if (!hero.hole || table.board.length < 3) return null;
+    const scenario = toScenario(hero.hole, table.board);
+    if (!scenario) return null;
+
+    const fiveCard = summarizeFiveCardHand(scenario);
+    const scenarioData = analyzeScenario(scenario);
+    const drawData = analyzeHeroDraws(scenario);
+
+    // 筛选出对手能超越 Hero 的代表性威胁牌型（前 3 个）
+    const aheadCategories = scenarioData.byCategory
+      .filter((cat) => cat.aheadCount > 0)
+      .slice(0, 3);
+
+    // 当前五张成牌评价
+    const bestHand = evaluateBestHand([...table.board, ...hero.hole]);
+
+    return {
+      fiveCard,
+      scenarioData,
+      drawData,
+      aheadCategories,
+      bestHand,
+    };
+  }, [heroCards, cards]);
 
   // 轮到电脑时按当前速度自动出牌。
   useEffect(() => {
@@ -602,44 +632,140 @@ export function TablePage() {
       </section>
 
       {showEquity && equity && !table.result && (
-        <section className="panel">
-          <h2>你的牌力估计</h2>
-          <div className="table-equity">
-            {table.board.length < 3 ? (
-              <>
-                <span className="table-equity__key">起手牌强度</span>
-                <span className="pct pct--md pct--info">
-                  {formatPercent(equity.made, 1)}
-                </span>
-              </>
-            ) : (
-              <>
-                <span className="table-equity__key">当前成牌强度</span>
-                <span className="pct pct--md pct--neutral">
-                  {formatPercent(equity.made, 1)}
-                </span>
-                <span className="table-equity__key">听牌补成概率</span>
-                <span className="pct pct--md pct--safe">
-                  {formatPercent(equity.draw, 1)}
-                </span>
-              </>
-            )}
-            <span className="table-equity__key">
-              综合胜率（对 {Math.max(1, opponents)} 个对手，粗略估计）
-            </span>
-            <span className="pct pct--lg pct--danger">
-              {formatPercent(equity.equity, 1)}
+        <section className="panel table-equity-panel">
+          <div className="table-equity-panel__header">
+            <h2>你的牌力估计与分析</h2>
+            <span className="table-equity-panel__badge">
+              {table.board.length < 3
+                ? '翻牌前启发式'
+                : `基于 ${equity.samples} 种对手组合全枚举`}
             </span>
           </div>
-          <p className="muted small">
+
+          <div className="table-equity-cards">
+            {table.board.length < 3 ? (
+              <div className="table-equity-card">
+                <span className="table-equity-card__label">起手牌强度</span>
+                <strong className="table-equity-card__val pct--info">
+                  {formatPercent(equity.made, 1)}
+                </strong>
+                <span className="table-equity-card__sub">
+                  点数/同花/连张综合评级
+                </span>
+              </div>
+            ) : (
+              <>
+                <div className="table-equity-card">
+                  <span className="table-equity-card__label">当前成牌强度</span>
+                  <strong className="table-equity-card__val pct--neutral">
+                    {formatPercent(equity.made, 1)}
+                  </strong>
+                  <span className="table-equity-card__sub">
+                    打赢随机单人对手的概率
+                  </span>
+                </div>
+                <div className="table-equity-card">
+                  <span className="table-equity-card__label">听牌补成期望</span>
+                  <strong className="table-equity-card__val pct--safe">
+                    {formatPercent(equity.draw, 1)}
+                  </strong>
+                  <span className="table-equity-card__sub">
+                    后续公共牌补成同花/顺子
+                  </span>
+                </div>
+              </>
+            )}
+            <div className="table-equity-card table-equity-card--highlight">
+              <span className="table-equity-card__label">
+                综合胜率（对 {Math.max(1, opponents)} 个对手）
+              </span>
+              <strong className="table-equity-card__val pct--accent">
+                {formatPercent(equity.equity, 1)}
+              </strong>
+              <span className="table-equity-card__sub">
+                多路对局估算期望
+              </span>
+            </div>
+            {toCall > 0 && (
+              <div className="table-equity-card">
+                <span className="table-equity-card__label">所需底池赔率</span>
+                <strong className="table-equity-card__val pct--danger">
+                  {formatPercent(potOdds, 1)}
+                </strong>
+                <span className="table-equity-card__sub">
+                  需投 {toCall} 争夺 {table.pot + toCall} 底池
+                </span>
+              </div>
+            )}
+          </div>
+
+          {handAnalysis && (
+            <div className="table-equity-analysis">
+              {/* 1. 当前成牌形态 */}
+              <div className="table-equity-analysis__section">
+                <span className="table-equity-analysis__tag">当前手牌形态</span>
+                <div className="table-equity-analysis__body">
+                  <strong>{handAnalysis.fiveCard ? handAnalysis.fiveCard.summary : describeHandValue(handAnalysis.bestHand)}</strong>
+                  {handAnalysis.fiveCard?.detail && (
+                    <span className="muted small">（{handAnalysis.fiveCard.detail}）</span>
+                  )}
+                </div>
+              </div>
+
+              {/* 2. 补牌与听牌明细 (Outs) */}
+              {handAnalysis.drawData.rows.length > 0 && (
+                <div className="table-equity-analysis__section">
+                  <span className="table-equity-analysis__tag">听牌补牌 (Outs)</span>
+                  <div className="table-equity-analysis__chips">
+                    {handAnalysis.drawData.rows.map((row) => (
+                      <span key={row.label} className="table-equity-chip">
+                        {row.label}
+                        {!row.backdoor && (
+                          <span className="table-equity-chip__outs">
+                            {row.completion.outs.length} 张 outs
+                          </span>
+                        )}
+                        <span className="table-equity-chip__prob">
+                          {formatPercent(row.completion.finalProbability, 1)}
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 3. 对手潜在领先威胁分布 */}
+              {handAnalysis.aheadCategories.length > 0 && (
+                <div className="table-equity-analysis__section">
+                  <span className="table-equity-analysis__tag">对手主要领先牌型</span>
+                  <div className="table-equity-analysis__threats">
+                    {handAnalysis.aheadCategories.map((cat) => (
+                      <div key={cat.category} className="table-equity-threat-item">
+                        <span className="table-equity-threat-item__name">
+                          {cat.category in TABLE_CONSTANTS ? '' : ''}
+                          {cat.groups[0]?.label ? `${cat.groups[0].label}` : `牌型 ${cat.category}`}
+                        </span>
+                        <span className="table-equity-threat-item__bar-wrap">
+                          <span
+                            className="table-equity-threat-item__bar"
+                            style={{ width: `${Math.min(100, cat.aheadProbability * 100 * 2.5)}%` }}
+                          />
+                        </span>
+                        <span className="table-equity-threat-item__prob">
+                          {formatPercent(cat.aheadProbability, 1)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <p className="muted small table-equity-footer-note">
             {table.board.length < 3
-              ? '翻牌前没有公共牌，无法枚举摊牌，这里用的是起手牌强度公式（点数、同花、连张），只是启发式估计。'
-              : `成牌强度是精确枚举：把对手可能拿到的 C(${
-                  52 - 2 - table.board.length
-                },2) = ${equity.samples} 种两张手牌全部比一遍，看有多少比例打不过你。`}
-            听牌补成概率也是精确值，来自训练器同一套补牌统计；综合胜率则把「每个对手都打不过你」当成独立事件
-            （胜率 = 单人胜率 ^ 对手数）。真实的多路胜率会略高一些，尤其是一对、两对这种中等牌，
-            所以这个数字只是估计，电脑玩家也是照它来决策的。
+              ? '翻牌前未发公共牌，基于起手牌点数、连张与同花进行概率启发估算。'
+              : `翻后数据通过逐一遍历比对剩余 ${equity.samples} 种对手底牌可能生成，包含真实成牌压制比、听牌补牌 outs 及对手领先概率。`}
           </p>
         </section>
       )}

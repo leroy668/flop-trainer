@@ -104,7 +104,7 @@ export function unknownCards(
   return createDeck().filter((card) => !used.has(cardKey(card)));
 }
 
-function toScenario(
+export function toScenario(
   hole: readonly [Card, Card],
   board: readonly Card[],
 ): Scenario | null {
