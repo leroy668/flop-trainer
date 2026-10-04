@@ -86,6 +86,8 @@ export interface LogEntry {
   street: TableStreet;
   seat: number | null;
   text: string;
+  /** 机器人给自己的动作写的「思路」一句话（只有 AI 会填）。 */
+  note?: string;
 }
 
 export interface PotAward {
@@ -127,6 +129,10 @@ export interface TableState {
   raiseCount: number;
   /** 当前该谁行动（null = 等待发下一手 / 已结束）。 */
   actor: number | null;
+  /** 翻牌前最后一个加注的座位（没有则为 null），用于「谁是翻牌前的进攻方」。 */
+  preflopAggressor: number | null;
+  /** 本街最后一个下注 / 加注的座位（换街时清零）。 */
+  lastAggressor: number | null;
   rngSeed: number;
   log: LogEntry[];
   result: HandResult | null;
@@ -136,8 +142,10 @@ export type ActionType = 'fold' | 'check' | 'call' | 'bet' | 'allin';
 
 export interface TableAction {
   type: ActionType;
-  /** bet = 加注增量；call / allin = 实际投入。 */
+  /** bet = 本街投入档位（5 / 10 / 20）；call / allin = 实际投入。 */
   amount?: number;
+  /** 可选的一句话说明（机器人用来解释自己的思路，不参与合法性判断）。 */
+  note?: string;
 }
 
 export interface LegalAction extends TableAction {
@@ -166,12 +174,14 @@ function log(
   state: TableState,
   seat: number | null,
   text: string,
+  note?: string,
 ): void {
   state.log.push({
     hand: state.handNumber,
     street: state.street,
     seat,
     text,
+    ...(note ? { note } : {}),
   });
 }
 
@@ -270,6 +280,8 @@ export function createTable(options: TableOptions = {}): TableState {
     currentBet: 0,
     raiseCount: 0,
     actor: null,
+    preflopAggressor: null,
+    lastAggressor: null,
     rngSeed: (options.seed ?? Date.now()) >>> 0,
     log: [],
     result: null,
@@ -290,6 +302,8 @@ export function startHand(state: TableState): TableState {
   next.currentBet = 0;
   next.raiseCount = 0;
   next.actor = null;
+  next.preflopAggressor = null;
+  next.lastAggressor = null;
   next.result = null;
   next.log = [];
 
@@ -460,19 +474,20 @@ export function applyAction(
   const next = cloneState(state);
   const seat = next.seats[seatIndex];
   const toCall = Math.max(0, next.currentBet - seat.committedStreet);
+  const isPreflop = next.street === 'preflop';
 
   switch (legal.type) {
     case 'fold': {
       seat.folded = true;
       seat.hasActed = true;
       seat.lastAction = '弃牌';
-      log(next, seatIndex, `${seat.name} 弃牌`);
+      log(next, seatIndex, `${seat.name} 弃牌`, action.note);
       break;
     }
     case 'check': {
       seat.hasActed = true;
       seat.lastAction = '过牌';
-      log(next, seatIndex, `${seat.name} 过牌`);
+      log(next, seatIndex, `${seat.name} 过牌`, action.note);
       break;
     }
     case 'call': {
@@ -484,6 +499,7 @@ export function applyAction(
         next,
         seatIndex,
         `${seat.name} ${seat.allIn ? `跟注 ${paid} 全下` : `跟注 ${paid}`}`,
+        action.note,
       );
       break;
     }
@@ -497,11 +513,14 @@ export function applyAction(
       seat.lastAction = `${isRaise ? '加注到' : '下注'} ${seat.committedStreet}`;
       next.currentBet = seat.committedStreet;
       next.raiseCount += 1;
+      next.lastAggressor = seatIndex;
+      if (isPreflop) next.preflopAggressor = seatIndex;
       resetActedExcept(next, seatIndex);
       log(
         next,
         seatIndex,
         `${seat.name} ${isRaise ? '加注到' : '下注'} ${seat.committedStreet}（再补 ${delta}）`,
+        action.note,
       );
       break;
     }
@@ -512,9 +531,11 @@ export function applyAction(
       if (seat.committedStreet > next.currentBet) {
         next.currentBet = seat.committedStreet;
         next.raiseCount += 1;
+        next.lastAggressor = seatIndex;
+        if (isPreflop) next.preflopAggressor = seatIndex;
       }
       resetActedExcept(next, seatIndex);
-      log(next, seatIndex, `${seat.name} 全下 ${seat.committedStreet}`);
+      log(next, seatIndex, `${seat.name} 全下 ${seat.committedStreet}`, action.note);
       break;
     }
   }
@@ -572,6 +593,7 @@ function advance(state: TableState): TableState {
     }
     next.currentBet = 0;
     next.raiseCount = 0;
+    next.lastAggressor = null;
 
     if (canAct.length <= 1) {
       // 都全下了（或者只剩一个人还能行动但没人能跟），直接发完摊牌。

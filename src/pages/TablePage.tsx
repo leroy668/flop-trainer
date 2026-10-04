@@ -154,6 +154,7 @@ function SeatCard({
   const isActor = table.actor === seat.index && !table.result;
   const hand = table.result?.hands[seat.index] ?? null;
   const delta = table.result?.deltas[seat.index] ?? 0;
+
   const classes = [
     'seat',
     seat.isHero ? 'seat--hero' : '',
@@ -336,17 +337,21 @@ export function TablePage() {
             )}
           </div>
           <div className="table-pot">
-            <span className="muted small">底池</span>
-            <strong className="table-pot__value">{table.pot}</strong>
-            <span className="street-badge">{TABLE_STREET_LABELS[table.street]}</span>
-            <span className="muted small">
-              第 {table.handNumber} 手 · 还在局里 {activeCount} 人
-            </span>
-            {toCall > 0 && (
+            <div className="table-pot__main">
+              <span className="table-pot__label">底池</span>
+              <strong className="table-pot__value">{table.pot}</strong>
+            </div>
+            <div className="table-pot__meta">
+              <span className="street-badge">{TABLE_STREET_LABELS[table.street]}</span>
               <span className="muted small">
-                轮到你时需跟注 {toCall}（底池赔率 {formatPercent(potOdds, 1)}）
+                第 {table.handNumber} 手 · 局内 {activeCount} 人
               </span>
-            )}
+              {toCall > 0 && (
+                <span className="small table-pot__call-hint">
+                  需跟注 {toCall}（赔率 {formatPercent(potOdds, 1)}）
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -372,8 +377,11 @@ export function TablePage() {
 
       <section className="panel table-actions">
         {table.result ? (
-          <>
-            <h2>第 {table.handNumber} 手结算</h2>
+          <div className="table-actions__result-box">
+            <div className="table-actions__result-header">
+              <h2>第 {table.handNumber} 手结算</h2>
+              <span className="table-actions__result-badge">{table.result.kind === 'showdown' ? '摊牌' : '全部弃牌'}</span>
+            </div>
             <p className="table-result__summary">{table.result.summary}</p>
             <ul className="table-awards">
               {table.result.awards.map((award) => (
@@ -391,10 +399,10 @@ export function TablePage() {
                 </li>
               ))}
             </ul>
-            <div className="actions">
+            <div className="actions table-actions__btns">
               <button
                 type="button"
-                className="button"
+                className="button button--primary"
                 onClick={() => dispatch({ type: 'next' })}
               >
                 下一手 ▶
@@ -416,22 +424,30 @@ export function TablePage() {
               >
                 ↩ 撤回上一步
               </button>
+              <span className="muted small table-actions__stack-hint">
+                你的筹码：<strong>{hero.stack}</strong>
+                {canRebuy(table, 0) ? '（可补码回到 200）' : ''}
+              </span>
             </div>
-            <p className="muted small">
-              你现在的筹码 {hero.stack}
-              {canRebuy(table, 0) ? '（可以补码回到 200）' : ''}
-            </p>
-          </>
+          </div>
         ) : isHeroTurn ? (
-          <>
-            <h2>轮到你行动</h2>
-            <p className="muted small">
-              底池 {table.pot}
-              {toCall > 0 ? ` · 需要跟注 ${toCall}` : ' · 无人下注'}
-              {table.raiseCount > 0
-                ? ` · 本街已加注 ${table.raiseCount}/${TABLE_CONSTANTS.MAX_RAISES_PER_STREET} 次`
-                : ''}
-            </p>
+          <div className="table-actions__hero-box">
+            <div className="table-actions__turn-header">
+              <h2>轮到你行动</h2>
+              <div className="table-actions__turn-meta">
+                <span className="table-actions__meta-chip">
+                  底池 <strong>{table.pot}</strong>
+                </span>
+                <span className={`table-actions__meta-chip ${toCall > 0 ? 'table-actions__meta-chip--call' : ''}`}>
+                  {toCall > 0 ? `需跟注 ${toCall}` : '无人下注'}
+                </span>
+                {table.raiseCount > 0 && (
+                  <span className="table-actions__meta-chip">
+                    已加注 {table.raiseCount}/{TABLE_CONSTANTS.MAX_RAISES_PER_STREET} 次
+                  </span>
+                )}
+              </div>
+            </div>
             <div className="table-buttons">
               {legal.map((action) => (
                 <button
@@ -450,87 +466,92 @@ export function TablePage() {
                 </button>
               ))}
             </div>
-            <div className="actions">
-              <span className="muted small">
-                {table.street === 'preflop'
-                  ? `翻牌前不会出现「全下（ALL IN）」：下注 / 加注只有 ${TABLE_CONSTANTS.BET_SIZES.join(
-                      ' / ',
-                    )} 三档、本街投入 ${TABLE_BET_CAP} 封顶（大盲 10，所以这里只能跟注 10 或直接加到 ${TABLE_BET_CAP}），加注后还必须留至少 1 个筹码。`
-                  : `翻牌后可以全下（ALL IN：一次推进全部剩余筹码，不受 ${TABLE_BET_CAP} 封顶限制，也算一次加注）。下注 / 加注档位是 ${TABLE_CONSTANTS.BET_SIZES.join(
-                      ' / ',
-                    )}，本街最多投入 ${TABLE_BET_CAP}。`}
-              </span>
+            <div className="table-actions__rules-inline muted small">
+              {table.street === 'preflop'
+                ? `翻牌前禁止全下：下注/加注档位为 ${TABLE_CONSTANTS.BET_SIZES.join(' / ')}，本街投入 ${TABLE_BET_CAP} 封顶（大盲 10，加注到 ${TABLE_BET_CAP}）。`
+                : `翻牌后可全下（不受 ${TABLE_BET_CAP} 封顶限制）。常规下注/加注档位为 ${TABLE_CONSTANTS.BET_SIZES.join(' / ')}，最高加到 ${TABLE_BET_CAP}。`}
             </div>
-          </>
+          </div>
         ) : (
-          <>
-            <h2>等待电脑玩家行动…</h2>
-            <p className="muted small">
-              {table.actor === null
-                ? '本手结束'
-                : `${table.seats[table.actor].name} 正在想`}
-            </p>
-          </>
+          <div className="table-actions__waiting-box">
+            <div className="table-actions__waiting-spinner" />
+            <div>
+              <h2 className="table-actions__waiting-title">等待电脑玩家行动…</h2>
+              <p className="muted small table-actions__waiting-sub">
+                {table.actor === null
+                  ? '本手结束'
+                  : `${table.seats[table.actor].name} 正在思考出牌`}
+              </p>
+            </div>
+          </div>
         )}
 
         <div className="table-toolbar">
-          <span className="muted small">对手数量</span>
-          <span className="table-bots">
-            {BOT_CHOICES.map((count) => (
-              <button
-                key={count}
-                type="button"
-                className={`chip chip--bot ${botCount === count ? 'chip--selected' : ''}`}
-                title={`${count} 个机器人（${count + 1} 人桌）`}
-                onClick={() => changeBots(count)}
-              >
-                {count}
-              </button>
-            ))}
-          </span>
-          <span className="muted small table-bots__hint">
-            改变人数会立刻重开牌桌（可 ↩ 撤回）
-          </span>
-          <span className="muted small">电脑思考速度</span>
-          {SPEEDS.map((speed) => (
-            <button
-              key={speed.id}
-              type="button"
-              className={`chip ${delay === speed.delay ? 'chip--selected' : ''}`}
-              onClick={() => setDelay(speed.delay)}
-            >
-              {speed.label}
-            </button>
-          ))}
-          <label className="switch switch--compact table-switch table-switch--equity">
-            <input
-              type="checkbox"
-              checked={showEquity}
-              onChange={(event) => setShowEquity(event.target.checked)}
-            />
-            <span className="switch__track">
-              <span className="switch__thumb" />
-            </span>
-            <span className="switch__label">显示我的胜率估计</span>
-          </label>
-          <label className="switch switch--compact table-switch table-switch--reveal">
-            <input
-              type="checkbox"
-              checked={showAll}
-              onChange={(event) => setShowAll(event.target.checked)}
-            />
-            <span className="switch__track">
-              <span className="switch__thumb" />
-            </span>
-            <span className="switch__label">亮出电脑底牌</span>
-          </label>
+          <div className="table-toolbar__group">
+            <span className="table-toolbar__label">人数</span>
+            <div className="table-bots">
+              {BOT_CHOICES.map((count) => (
+                <button
+                  key={count}
+                  type="button"
+                  className={`chip chip--bot ${botCount === count ? 'chip--selected' : ''}`}
+                  title={`${count} 个电脑（共 ${count + 1} 人）`}
+                  onClick={() => changeBots(count)}
+                >
+                  {count}人
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="table-toolbar__group">
+            <span className="table-toolbar__label">速度</span>
+            <div className="table-speeds">
+              {SPEEDS.map((speed) => (
+                <button
+                  key={speed.id}
+                  type="button"
+                  className={`chip ${delay === speed.delay ? 'chip--selected' : ''}`}
+                  onClick={() => setDelay(speed.delay)}
+                >
+                  {speed.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="table-toolbar__switches">
+            <label className="switch switch--compact table-switch table-switch--equity">
+              <input
+                type="checkbox"
+                checked={showEquity}
+                onChange={(event) => setShowEquity(event.target.checked)}
+              />
+              <span className="switch__track">
+                <span className="switch__thumb" />
+              </span>
+              <span className="switch__label">胜率估计</span>
+            </label>
+            <label className="switch switch--compact table-switch table-switch--reveal">
+              <input
+                type="checkbox"
+                checked={showAll}
+                onChange={(event) => setShowAll(event.target.checked)}
+              />
+              <span className="switch__track">
+                <span className="switch__thumb" />
+              </span>
+              <span className="switch__label">亮出底牌</span>
+            </label>
+          </div>
+
           {ui.history.length > 0 && !table.result && (
             <button
               type="button"
-              className="button button--ghost button--tiny"
+              className="button button--ghost button--tiny table-toolbar__undo"
               onClick={() => dispatch({ type: 'undo' })}
             >
-              ↩ 撤回上一步
+              ↩ 撤回
             </button>
           )}
         </div>
@@ -644,8 +665,8 @@ export function TablePage() {
             平手平分，除不尽的零头给庄家左手边第一位。
           </li>
           <li>
-            电脑玩家的决策来自「胜率 vs 底池赔率」，每人有固定的松紧 / 激进度
-            （保守、激进、平衡、松凶），带一点随机偷鸡。
+            电脑玩家具备深度的真人博弈决策模型：涵盖紧凶、松凶、平衡、跟注站、岩石、疯子等真实牌手风格分布，
+            掌握位置优势、盲注防守与 3-Bet、翻后持续下注（C-Bet）、听牌半诈唬（Semi-Bluff）、强牌慢打设伏（Trap）、控池与抓诈唬等综合决策能力。
           </li>
         </ul>
       </section>
