@@ -5,8 +5,9 @@
  * 1. 深度人格系统（TAG紧凶、LAG松凶、平衡策略、跟注站、岩石、疯子）
  * 2. 位置感知（BTN庄家位、CO关煞位、盲注位防守、UTG早位置）
  * 3. 牌力分层与牌面质地感知（超对/顶对强踢脚/中对/听牌/空气，干燥面 vs 湿润面）
- * 4. 战术动作库（翻前进攻方持续下注 C-bet、听牌半诈唬 Semi-bluff、强牌慢打设伏 Trap、控池 Pot control、抓诈 Bluff-catch）
- * 5. 真实内心独白（为每个动作生成细腻、符合扑克术语与玩家人设的思路一句话）
+ * 4. 战术动作库（翻前进攻方持续下注 C-bet、听牌半诈唬 Semi-bluff、强牌慢打设伏 Trap、
+ *    控池 Pot control、抓诈 Bluff-catch、过牌-加注 Check-Raise、偶尔抽风 Spaz）
+ * 5. 对手建模（面对疯子放宽跟注、面对岩石收紧）、每手「情绪温度」与尺度漂移
  *
  * 约束不变量：
  * - 所有动作均经由 `legalActions` 过滤，绝对不可能出现非法动作；
@@ -21,7 +22,6 @@ import {
   compareHandValue,
   describeHandValue,
   evaluateBestHand,
-  HAND_CATEGORY_LABELS,
   HandCategory,
 } from './evaluator';
 import { summarizeFiveCardHand } from './handType';
@@ -187,6 +187,10 @@ function pick(
   );
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
 /** 格式化底牌中文展示名，例如 "A♠ K♥" 或 "对10" */
 function formatHole(hole: readonly [Card, Card]): string {
   const high = RANK_VALUES[hole[0].rank] >= RANK_VALUES[hole[1].rank] ? hole[0] : hole[1];
@@ -198,9 +202,13 @@ function formatHole(hole: readonly [Card, Card]): string {
   return `${high.rank}${low.rank}${suited ? 's' : 'o'}`;
 }
 
-/** 识别牌面干燥度（Dry / Wet） */
-function analyzeBoardTexture(board: readonly Card[]): { isDry: boolean; isMonotone: boolean } {
-  if (board.length < 3) return { isDry: true, isMonotone: false };
+/** 识别牌面干燥度（Dry / Wet）与同花面。 */
+function analyzeBoardTexture(board: readonly Card[]): {
+  isDry: boolean;
+  isMonotone: boolean;
+  isWet: boolean;
+} {
+  if (board.length < 3) return { isDry: true, isMonotone: false, isWet: false };
   const suitCounts: Record<Suit, number> = { s: 0, h: 0, d: 0, c: 0 };
   const ranks: number[] = [];
   for (const c of board) {
@@ -216,7 +224,7 @@ function analyzeBoardTexture(board: readonly Card[]): { isDry: boolean; isMonoto
   }
   const isConnected = closeGaps >= 2;
   const isDry = !isMonotone && !isConnected && maxSuitCount <= 2;
-  return { isDry, isMonotone };
+  return { isDry, isMonotone, isWet: isMonotone || isConnected };
 }
 
 /** 获取玩家当前的位置标签 */
@@ -231,14 +239,46 @@ function positionTag(seatIndex: number, button: number, seatCount: number): stri
   return '中位(MP)';
 }
 
+/** 是否拥有翻后位置（庄家位或关煞位）。 */
+function hasPostflopPosition(seatIndex: number, button: number, seatCount: number): boolean {
+  if (seatIndex === button) return true;
+  const step = (seatIndex - button + seatCount) % seatCount;
+  return step === seatCount - 1 && seatCount >= 4;
+}
+
 /* ------------------------------------------------------------------ */
 /* 拟真电脑决策主入口                                                  */
 /* ------------------------------------------------------------------ */
 
 /**
+ * 从当前可用的「下注 / 加注」按钮里，按人格尺度偏好挑一个档位（5 / 10 / 20）。
+ *
+ * `sizing`（0~1，人格固有偏好）+ `boost`（本手战术倾向）+ 每次决策的情绪漂移，
+ * 一起决定最终落在小注还是顶格大注，避免所有机器人永远只打同一个数字。
+ */
+function chooseBetSize(
+  bets: readonly TableAction[],
+  sizing: number,
+  rng: Rng,
+  boost = 0,
+): number | null {
+  const sizes = bets
+    .map((action) => action.amount ?? 0)
+    .filter((amount) => amount > 0)
+    .sort((a, b) => a - b);
+  if (sizes.length === 0) return null;
+  const drift = (nextRandom(rng) - 0.5) * 0.55;
+  const t = clamp(sizing + boost + drift, 0, 0.999);
+  const index = Math.min(sizes.length - 1, Math.floor(t * sizes.length));
+  return sizes[index];
+}
+
+/**
  * 拟真电脑玩家决策函数。
- * 包含完整的人性化博弈思维树：起手牌位置策略、翻牌后持续下注、
- * 听牌半诈唬、强牌设伏慢打、底池赔率折算以及各具特色的人格反应。
+ *
+ * 完整的人性化博弈思维树：起手牌位置策略、翻前反加注、翻牌后持续下注、
+ * 听牌半诈唬、强牌设伏慢打、过牌-加注、底池赔率折算、对手建模，
+ * 以及每个人格各具特色、且每手都带情绪漂移的尺度选择。
  */
 export function decideBotAction(
   state: TableState,
@@ -253,8 +293,9 @@ export function decideBotAction(
   if (!seat.hole) throw new Error(`座位 ${seatIndex} 没有底牌`);
 
   const persona: BotPersona = botPersona(seatIndex, state.rngSeed);
-  const style = personaStyle(persona);
+  // 两个随机数：roll 决定「做什么」，mood 是这一手的情绪温度（打散固定阈值）。
   const roll = nextRandom(rng);
+  const mood = nextRandom(rng);
 
   const toCall = Math.max(0, state.currentBet - seat.committedStreet);
   const opponents = state.seats.filter(
@@ -267,23 +308,22 @@ export function decideBotAction(
   const allin = pick(legal, 'allin');
   const bets = legal.filter((action) => action.type === 'bet');
 
-  const bet = (targetSize: number): TableAction | null => {
-    if (bets.length === 0) return null;
-    return (
-      pick(legal, 'bet', targetSize) ??
-      bets.find((b) => (b.amount ?? 0) >= targetSize) ??
-      bets[bets.length - 1] ??
-      null
-    );
+  /** 在当前合法的加注档位里挑一个尺度；返回 null 表示当前根本不能加注。 */
+  const raiseTo = (boost = 0): TableAction | null => {
+    const size = chooseBetSize(bets, persona.sizing, rng, boost);
+    if (size === null) return null;
+    return pick(legal, 'bet', size) ?? bets[bets.length - 1] ?? null;
   };
+
+  // 情绪温度：让同样牌力、同样局面的决策，在不同手/不同时刻略有摇摆。
+  const temp = (mood - 0.5) * 2; // -1 ~ 1
+  const aggression = clamp(persona.aggression + temp * 0.12, 0.02, 0.95);
+  const patience = clamp(persona.callDown + temp * 0.1, 0.02, 0.98);
 
   const fold: TableAction = { type: 'fold' };
 
-  // 安全兜底，同时附加默认说明
   const makeDecision = (chosen: TableAction | null, noteText: string): TableAction => {
-    if (chosen) {
-      return { ...chosen, note: noteText };
-    }
+    if (chosen) return { ...chosen, note: noteText };
     if (check) return { ...check, note: noteText };
     if (call) return { ...call, note: noteText };
     return { ...fold, note: noteText };
@@ -291,13 +331,23 @@ export function decideBotAction(
 
   const holeLabel = formatHole(seat.hole);
   const posLabel = positionTag(seatIndex, state.button, state.seats.length);
-  const potOdds = toCall > 0 ? toCall / (state.pot + toCall) : 0;
+  const inPosition = hasPostflopPosition(seatIndex, state.button, state.seats.length);
 
-  // 上一个行动者的性格画像分析（若存在）
+  /* ---------------------------------------------------------------- */
+  /* 对手建模：上一个下注 / 加注的人是什么性格？                        */
+  /* ---------------------------------------------------------------- */
   const lastAggrPersona =
     state.lastAggressor !== null && state.lastAggressor !== seatIndex
       ? botPersona(state.lastAggressor, state.rngSeed)
       : null;
+  const facingManiac = lastAggrPersona
+    ? lastAggrPersona.bluff >= 0.14 || lastAggrPersona.aggression >= 0.6
+    : false;
+  const facingRock = lastAggrPersona
+    ? lastAggrPersona.bluff <= 0.02 && lastAggrPersona.aggression <= 0.3
+    : false;
+  // 对手建模对「愿意跟注」的修正：疯子多加，岩石少加。
+  const readAdjust = (facingManiac ? 0.18 : 0) - (facingRock ? 0.16 : 0);
 
   /* ================================================================ */
   /* 1. 翻牌前决策 (Preflop)                                          */
@@ -309,79 +359,82 @@ export function decideBotAction(
     const isBB = seatIndex === bigBlind;
     const isSB = seatIndex === smallBlind;
 
-    // 位置修正与起手牌特征
     let posBonus = 0;
     if (isButton) posBonus = 0.05;
-    else if (isBB) posBonus = 0.04; // 大盲由于已有10投入，防守赔率优厚
+    else if (isBB) posBonus = 0.04; // 大盲已投 10，防守赔率优厚
     else if (isSB) posBonus = -0.03; // 小盲翻后无位置
 
-    const effectiveScore = rawScore + posBonus - persona.tightness * 0.35;
+    const effectiveScore =
+      rawScore + posBonus - persona.tightness * 0.35 + temp * 0.03;
     const isPremium = rawScore >= 0.72; // AA, KK, QQ, AKs, AKo
-    const isStrong = rawScore >= 0.58;  // JJ-88, AQs, AJs, KQs
+    const isStrong = rawScore >= 0.58; // JJ-88, AQs, AJs, KQs
     const isPlayable = rawScore >= 0.44; // 中低对, 同花连张, 大高张
 
-    // 局面 A: 无人下注 / 大盲有过牌免费看牌机会 (toCall === 0)
+    // 局面 A：无人下注 / 大盲有免费看牌机会
     if (toCall === 0) {
-      if (bets.length > 0) {
-        // 朋友局中：大盲免费看牌多数直接过牌；极强牌（AA/KK）或偶尔试探才会轻微加注到 10
-        if (isPremium && roll < 0.4) {
-          const raiseAct = bet(10);
-          if (raiseAct) {
-            return makeDecision(
-              raiseAct,
-              `在大盲位手握极品【${holeLabel}】，加注到 10 试探一下`,
-            );
-          }
+      if (bets.length > 0 && isPremium && roll < 0.12 + aggression * 0.35) {
+        const raiseAct = raiseTo(0.1);
+        if (raiseAct) {
+          return makeDecision(
+            raiseAct,
+            `在大盲位手握极品【${holeLabel}】，加注到 ${raiseAct.amount} 试探`,
+          );
         }
       }
       return makeDecision(
         check ?? call,
-        `在大盲位手握【${holeLabel}】，有过牌免费看翻牌的机会，轻松过牌看翻牌`,
+        `在大盲位手握【${holeLabel}】，免费过牌看翻牌`,
       );
     }
 
-    // 局面 B: 面对底池只有大盲平跟 (toCall === 5 或 10，尚未有人加注)
+    // 局面 B：只有盲注 / 平跟（还没人加注），轮到我们开池
     if (state.currentBet <= 10) {
-      if (bets.length > 0) {
-        // 优质好牌（AA, KK, QQ, AK）朋友局正常平跟进池看翻牌，只有小概率加注到 10 或极罕见加到 20
-        if (isPremium && roll < 0.35) {
-          const openAct = bet(10);
-          if (openAct) {
-            return makeDecision(
-              openAct,
-              `手握好牌【${holeLabel}】，稍作加注到 10`,
-            );
-          }
+      // 好牌偶尔主动加注开池，而不是永远平跟
+      const openChance = 0.10 + aggression * 0.4 + persona.threeBet * 0.25;
+      if (bets.length > 0 && (isPremium || isStrong) && roll < openChance) {
+        const openAct = raiseTo(isPremium ? 0.5 : 0.15);
+        if (openAct) {
+          return makeDecision(
+            openAct,
+            `手握好牌【${holeLabel}】，主动加注到 ${openAct.amount}`,
+          );
         }
       }
 
-      // 朋友局绝大多数情况：只要有牌就平跟 10 块钱看翻牌 (Limp / Call)
-      if (isPlayable || persona.callDown >= 0.3 || effectiveScore >= 0.38) {
+      // 平跟进池：门槛随牌力、人格松紧与跟注站程度浮动
+      const limpThreshold =
+        0.42 - patience * 0.08 - aggression * 0.06 + persona.tightness * 0.3;
+      if (isPlayable || effectiveScore >= limpThreshold) {
         return makeDecision(
           call ?? check,
-          `在${posLabel}手握【${holeLabel}】，平跟 10 筹码凑热闹看翻牌`,
+          `在${posLabel}手握【${holeLabel}】，平跟 ${toCall || 0} 看翻牌${inPosition ? '（有位置）' : ''}`,
         );
       }
-
-      return makeDecision(
-        fold,
-        `起手牌【${holeLabel}】太差，随手弃牌`,
-      );
+      return makeDecision(fold, `起手牌【${holeLabel}】太差，弃牌`);
     }
 
-    // 局面 C: 面临别人加注 (toCall >= 10)
-    // 朋友局中极少有人再反加注，多数选择跟注或者弃牌
-    if (isPremium || isStrong || (isPlayable && roll < 0.4)) {
-      return makeDecision(
-        call,
-        `手握【${holeLabel}】，跟注看翻牌`,
-      );
+    // 局面 C：面对别人的加注
+    const threeBetChance =
+      persona.threeBet * (isPremium ? 1.4 : isStrong ? 0.8 : 0.2) + (inPosition ? 0.05 : 0);
+    if (bets.length > 0 && (isPremium || isStrong) && roll < threeBetChance) {
+      const reraise = raiseTo(0.55);
+      if (reraise) {
+        return makeDecision(
+          reraise,
+          `手握【${holeLabel}】，反加注到 ${reraise.amount}`,
+        );
+      }
     }
-
-    return makeDecision(
-      fold,
-      `面对加注，手牌【${holeLabel}】不够强，弃牌`,
-    );
+    if (isPremium || isStrong) {
+      return makeDecision(call, `手握【${holeLabel}】，跟注看翻牌`);
+    }
+    if (isPlayable && roll < 0.3 + patience * 0.4) {
+      return makeDecision(call, `【${holeLabel}】还能打，跟注看翻牌`);
+    }
+    if (roll < patience * 0.22) {
+      return makeDecision(call, `【${holeLabel}】凑个热闹，跟注`);
+    }
+    return makeDecision(fold, `面对加注，手牌【${holeLabel}】不够强，弃牌`);
   }
 
   /* ================================================================ */
@@ -390,7 +443,7 @@ export function decideBotAction(
   const scenario = toScenario(seat.hole, state.board);
   const heroBest = evaluateBestHand([...state.board, ...seat.hole]);
   const handSummary = scenario ? summarizeFiveCardHand(scenario) : null;
-  const boardAnalysis = analyzeBoardTexture(state.board);
+  const board = analyzeBoardTexture(state.board);
 
   const handCategory = heroBest.category;
   const handDesc = handSummary ? handSummary.summary : describeHandValue(heroBest);
@@ -407,7 +460,7 @@ export function decideBotAction(
   const isStrong =
     isMonster ||
     handCategory === HandCategory.TwoPair ||
-    (handSummary?.pairPosition === 'overpair') ||
+    handSummary?.pairPosition === 'overpair' ||
     (handSummary?.pairPosition === 'top-pair' && estimate.made >= 0.68);
   const isMedium =
     !isStrong &&
@@ -433,138 +486,230 @@ export function decideBotAction(
 
   // 是否为翻前进攻方（享有持续下注 C-Bet 权利）
   const isPreflopAggressor = state.preflopAggressor === seatIndex;
+  // 干燥面更适合诈唬，湿润/同花面收着点。
+  const bluffSurface = board.isDry ? 1.25 : board.isWet ? 0.7 : 1;
+
+  /* ---------------------------------------------------------------- */
+  /* 翻后分支 0：极罕见的情绪抽风（Spaz）——人类的不确定性             */
+  /* ---------------------------------------------------------------- */
+  if (mood < persona.spaz * 2.5) {
+    if (bets.length > 0 && roll < 0.6) {
+      const spazBet = raiseTo(0.65);
+      if (spazBet) {
+        return makeDecision(spazBet, `手滑拍了一枪 ${spazBet.amount}，纯属心情`);
+      }
+    }
+    if (call && toCall > 0 && roll >= 0.6) {
+      return makeDecision(call, `今天心情好，跟一注看看`);
+    }
+  }
 
   /* ---------------------------------------------------------------- */
   /* 翻后分支 1：当前无人下注 (toCall === 0)                           */
   /* ---------------------------------------------------------------- */
   if (toCall === 0) {
-    if (bets.length > 0) {
-      // 1.1 坚果 / 超级大牌（同花顺、四条、葫芦、同花）
-      if (isNuts || (isMonster && estimate.equity >= 0.88)) {
-        // 朋友局中：极少推全下，多数打 5 或 10 慢慢收价值；仅河牌且底池已经很大时极小概率打 20
-        if (state.street === 'river' && (state.pot >= 80 || seat.stack <= 30) && allin && roll < 0.1) {
-          return makeDecision(
-            allin,
-            `手握坚果牌【${handDesc}】，筹码见底顺势全下`,
-          );
-        }
-        // 朋友局中最常见：过牌慢打或者下个 5 / 10 意思一下
-        if (roll < 0.5) {
-          return makeDecision(
-            check,
-            `拿到超级大牌【${handDesc}】，友好过牌等后街看牌`,
-          );
-        }
-        const friendlyBet = bet(10) ?? bet(5);
+    if (bets.length === 0) return makeDecision(check, `过牌看牌`);
+
+    // 1.1 坚果 / 超级大牌
+    if (isNuts || (isMonster && estimate.equity >= 0.85)) {
+      // 朋友局里几乎不推全下，只在河牌、底池已经很大或筹码见底时极小概率来一手
+      if (
+        state.street === 'river' &&
+        (state.pot >= 80 || seat.stack <= 30) &&
+        allin &&
+        roll < 0.12
+      ) {
+        return makeDecision(allin, `手握坚果【${handDesc}】，筹码见底顺势全下`);
+      }
+      // 慢打设伏：人格越爱设伏，越倾向过牌
+      if (roll < persona.trap) {
+        return makeDecision(check, `拿到大牌【${handDesc}】，过牌设伏等后街`);
+      }
+      const valueBet = raiseTo(0.3);
+      if (valueBet) {
         return makeDecision(
-          friendlyBet,
-          `手握大牌【${handDesc}】，下注 10 小试一下`,
+          valueBet,
+          `手握大牌【${handDesc}】，下注 ${valueBet.amount} 收价值`,
         );
       }
-
-      // 1.2 强牌（两对、超对、顶对好踢脚）
-      if (isStrong) {
-        // 绝大多数情况朋友局优先选择过牌控池或下注 5 探路
-        if (roll < 0.55) {
-          return makeDecision(check, `手握【${handDesc}】，选择过牌看牌`);
-        }
-        const smallBet = bet(5) ?? bet(10);
-        return makeDecision(
-          smallBet,
-          `手握好牌【${handDesc}】，小下个 5 筹码探路`,
-        );
-      }
-
-      // 1.3 强听牌（同花/顺子听牌）
-      if (hasStrongDraw) {
-        if (roll < 0.25) {
-          const smallDrawBet = bet(5);
-          if (smallDrawBet) {
-            return makeDecision(
-              smallDrawBet,
-              `手握听牌【${handDesc}】，扔个 5 试一试`,
-            );
-          }
-        }
-        return makeDecision(
-          check,
-          `手握听牌【${handDesc}】，免费过牌看下一张`,
-        );
-      }
-
-      // 1.4 中等牌（中对、弱顶对）
-      if (isMedium) {
-        return makeDecision(
-          check,
-          `手握【${handDesc}】，牌力中等，过牌看看`,
-        );
-      }
-
-      // 1.5 弱牌/空气牌：朋友局绝大多数直接过牌
-      return makeDecision(check, `没中牌，轻松过牌`);
+      return makeDecision(check, `手握大牌【${handDesc}】，过牌`);
     }
 
-    return makeDecision(check, `过牌看牌`);
+    // 1.2 强牌（两对、超对、顶对好踢脚）
+    if (isStrong) {
+      const cbetChance = isPreflopAggressor
+        ? persona.cbet * 0.9 + aggression * 0.25
+        : 0.3 + aggression * 0.3;
+      if (roll < cbetChance) {
+        const strongBet = raiseTo(isPreflopAggressor ? 0.05 : 0);
+        if (strongBet) {
+          return makeDecision(
+            strongBet,
+            isPreflopAggressor
+              ? `延续翻前气势，下注 ${strongBet.amount}`
+              : `手握【${handDesc}】，下注 ${strongBet.amount}`,
+          );
+        }
+      }
+      return makeDecision(check, `手握【${handDesc}】，过牌控池`);
+    }
+
+    // 1.3 听牌（同花/顺子）——半诈唬
+    if (hasStrongDraw) {
+      const semiChance = persona.semiBluff * bluffSurface * (inPosition ? 1.15 : 0.9);
+      if (roll < semiChance) {
+        const drawBet = raiseTo(0.1);
+        if (drawBet) {
+          return makeDecision(
+            drawBet,
+            `手握听牌【${handDesc}】，半诈唬下注 ${drawBet.amount}`,
+          );
+        }
+      }
+      return makeDecision(check, `手握听牌【${handDesc}】，过牌看下一张`);
+    }
+    if (hasWeakDraw && roll < persona.semiBluff * 0.35 * bluffSurface) {
+      const probeBet = raiseTo(-0.05);
+      if (probeBet) {
+        return makeDecision(probeBet, `小听牌，便宜下注 ${probeBet.amount} 探路`);
+      }
+    }
+
+    // 1.4 中等牌（中对、弱顶对）——偶尔小额价值下注，多数控池
+    if (isMedium) {
+      if (roll < 0.12 + aggression * 0.18) {
+        const thinBet = raiseTo(-0.15);
+        if (thinBet) {
+          return makeDecision(thinBet, `手握【${handDesc}】，小额领先下注 ${thinBet.amount}`);
+        }
+      }
+      return makeDecision(check, `手握【${handDesc}】，过牌控池`);
+    }
+
+    // 1.5 空气牌——纯诈唬（只有一部分人格会做）
+    const bluffChance = persona.bluff * bluffSurface * (inPosition ? 1.3 : 0.85);
+    if (roll < bluffChance) {
+      const bluffBet = raiseTo(isPreflopAggressor ? 0.05 : -0.05);
+      if (bluffBet) {
+        return makeDecision(
+          bluffBet,
+          isPreflopAggressor
+            ? `翻前是我加注的，翻牌继续代表强牌下注 ${bluffBet.amount}`
+            : `牌面没中，下注 ${bluffBet.amount} 施压`,
+        );
+      }
+    }
+    return makeDecision(check, `没中牌，轻松过牌`);
   }
 
   /* ---------------------------------------------------------------- */
   /* 翻后分支 2：面临对手下注 / 加注 (toCall > 0)                      */
   /* ---------------------------------------------------------------- */
+  const potOdds = toCall / (state.pot + toCall);
 
-  // 2.1 坚果 / 怪物级大牌面对下注：通常选择平跟 5/10，或者轻微反加到 10/20，极少梭哈
+  // 2.1 坚果 / 怪物级大牌
   if (isNuts || (isMonster && estimate.equity >= 0.85)) {
-    // 只有在筹码已经所剩无几且河牌时，才极小概率全下
-    if (state.street === 'river' && seat.stack <= 25 && allin && roll < 0.15) {
+    if (
+      state.street === 'river' &&
+      (state.pot >= 80 || seat.stack <= 30) &&
+      allin &&
+      roll < 0.15
+    ) {
       return makeDecision(allin, `手握大牌【${handDesc}】，筹码见底全下`);
     }
-    // 面对加注，朋友局最典型的行为是平跟设伏或享受摊牌
-    if (roll < 0.65 || bets.length === 0) {
-      return makeDecision(call ?? check, `手握大牌【${handDesc}】，平跟看后牌`);
+    // 过牌-加注 / 反加注：人格越爱做越容易反打
+    if (bets.length > 0 && roll < persona.checkRaise) {
+      const checkRaise = raiseTo(0.5);
+      if (checkRaise) {
+        return makeDecision(
+          checkRaise,
+          `手握【${handDesc}】，反加注到 ${checkRaise.amount}`,
+        );
+      }
     }
-    const safeRaise = bet(10) ?? bet(20);
-    return makeDecision(safeRaise ?? call, `手握大牌【${handDesc}】，稍作加注`);
+    // 慢打设伏
+    if (roll < persona.trap) {
+      return makeDecision(call ?? check, `手握【${handDesc}】，平跟设伏`);
+    }
+    if (bets.length > 0 && roll < 0.4) {
+      const valueRaise = raiseTo(0.3);
+      if (valueRaise) {
+        return makeDecision(
+          valueRaise,
+          `手握【${handDesc}】，加注到 ${valueRaise.amount} 做大底池`,
+        );
+      }
+    }
+    return makeDecision(call ?? check, `手握大牌【${handDesc}】，跟注看后牌`);
   }
 
-  // 2.2 强牌（两对、超对、顶对）
+  // 2.2 强牌（两对、超对、顶对好踢脚）
   if (isStrong) {
-    // 面对小注（5或10），朋友局基本都是跟注（Call）
-    return makeDecision(call, `手握【${handDesc}】，稳稳跟注`);
+    if (bets.length > 0 && roll < persona.checkRaise * 0.85) {
+      const strongRaise = raiseTo(0.15);
+      if (strongRaise) {
+        return makeDecision(
+          strongRaise,
+          `手握【${handDesc}】，加注到 ${strongRaise.amount}`,
+        );
+      }
+    }
+    // 只有大幅落后时才考虑弃牌（例如面对岩石的大注）
+    if (facingRock && toCall >= 20 && estimate.made < 0.62 && roll < 0.35) {
+      return makeDecision(fold, `老实人下了大注，我这手【${handDesc}】先撤`);
+    }
+    return makeDecision(call ?? check, `手握【${handDesc}】，跟注`);
   }
 
   // 2.3 听牌（同花/顺子）面对下注
   if (hasStrongDraw) {
-    // 朋友局听牌只要便宜（<= 10）基本都会跟注看看，绝不会神经质加注到 20 或梭哈
-    if (toCall <= 10 && call) {
+    // 半诈唬加注（用听牌施压），按人格频率触发
+    if (bets.length > 0 && roll < persona.semiBluff * 0.45 && estimate.draw >= 0.28) {
+      const semiRaise = raiseTo(0.2);
+      if (semiRaise) {
+        return makeDecision(
+          semiRaise,
+          `听牌【${handDesc}】，半诈唬加注到 ${semiRaise.amount}`,
+        );
+      }
+    }
+    // 赔率合适或便宜就看下一张
+    if (call && (toCall <= 10 || estimate.draw > potOdds + 0.06)) {
       return makeDecision(
         call,
-        `手握听牌【${handDesc}】，便宜跟注看下一张能不能中`,
+        `手握听牌【${handDesc}】，跟注看下一张能不能中`,
       );
     }
-    if (toCall > 10 && call && roll < 0.35) {
-      return makeDecision(call, `追追看顺子/同花`);
+    if (call && roll < 0.3) {
+      return makeDecision(call, `追一手，跟注看看`);
     }
-    return makeDecision(fold, `跟注成本太高，不追了弃牌`);
+    return makeDecision(fold, `听牌代价太高，弃牌`);
   }
 
-  // 2.4 中等牌（中对、弱顶对）
+  // 2.4 中等牌（中对、弱顶对）——抓诈 / 控池
   if (isMedium) {
-    // 面对 5 块钱小注，绝大多数朋友都会跟注看一眼
-    if (toCall <= 5 && call) {
-      return makeDecision(call, `就 5 块钱，跟注看一眼`);
+    const effectivePatience = clamp(patience + readAdjust + persona.trap * 0.1, 0.05, 0.95);
+    const cheapFactor = toCall <= 5 ? 1 : toCall <= 10 ? 0.7 : 0.3;
+    if (call && roll < effectivePatience * cheapFactor) {
+      return makeDecision(call, `手握【${handDesc}】，跟注看看${facingManiac ? '（对手爱诈唬）' : ''}`);
     }
-    // 面对 10 块钱，大部分看心情跟注
-    if (toCall <= 10 && call && roll < 0.55) {
-      return makeDecision(call, `有对子【${handDesc}】，跟注瞧瞧`);
-    }
-    return makeDecision(fold, `别人下注了，中等小牌弃掉`);
+    return makeDecision(fold, `面对下注，中等牌收手弃牌`);
   }
 
-  // 2.5 弱牌 / 没中牌
-  if (isWeak && toCall <= 5 && roll < 0.25 && call) {
-    return makeDecision(call, `随手跟 5 块钱看戏`);
+  // 2.5 弱牌 / 边缘牌
+  if (isWeak) {
+    const effectivePatience = clamp(patience + readAdjust, 0.05, 0.95);
+    if (call && toCall <= 5 && roll < 0.12 + effectivePatience * 0.3) {
+      return makeDecision(call, `就 ${toCall} 筹码，跟一注看戏`);
+    }
   }
 
+  // 2.6 纯空气牌——偶尔诈唬加注，多数弃牌
+  if (bets.length > 0 && roll < persona.bluff * bluffSurface * 0.6) {
+    const bluffRaise = raiseTo(0.35);
+    if (bluffRaise) {
+      return makeDecision(bluffRaise, `空气牌诈唬，加注到 ${bluffRaise.amount}`);
+    }
+  }
   return makeDecision(fold, `没牌弃掉`);
-
-  return makeDecision(fold, `牌面完全错过且面临下注，弃牌止损`);
 }

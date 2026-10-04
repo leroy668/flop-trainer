@@ -335,11 +335,14 @@ export function TablePage() {
   }, [heroCards, cards]);
 
   // 轮到电脑时按设定速度出牌；若玩家已弃牌，电脑行动自动极速快进（40ms），无需无谓等待。
+  // 每次行动叠加 ±30% 的随机思考抖动，避免机器人像节拍器一样整齐划一。
   useEffect(() => {
     if (table.result || table.actor === null) return;
     const actor = table.actor;
     if (table.seats[actor].isHero) return;
-    const waitTime = hero.folded ? Math.min(40, delay) : delay;
+    const waitTime = hero.folded
+      ? Math.min(40, delay)
+      : Math.max(60, Math.round(delay * (0.7 + Math.random() * 0.6)));
     const timer = window.setTimeout(() => {
       const action = decideBotAction(table, actor, rngRef.current);
       dispatch({ type: 'tick', action });
