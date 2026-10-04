@@ -7,6 +7,7 @@ import { createRng } from '../src/poker/rng';
 import {
   TABLE_CONSTANTS,
   applyAction,
+  blindIndices,
   canRebuy,
   createTable,
   findLegalAction,
@@ -484,5 +485,104 @@ describe('本桌不是标准无限注德州扑克', () => {
     expect([...labels].some((label) => label === 'preflop 加注 5（到 15）')).toBe(true);
     expect([...labels].some((label) => label === 'preflop 跟注 10')).toBe(true);
     expect([...labels].every((label) => !label.startsWith('preflop 全下'))).toBe(true);
+  }, 60000);
+});
+
+/* ------------------------------------------------------------------ */
+/* 人数可调：加 / 减机器人                                              */
+/* ------------------------------------------------------------------ */
+
+describe('人数可调', () => {
+  it('座位数会被夹在 2 ～ 6 之间，名字依次是 你 / 机器人 A…E', () => {
+    expect(createTable({ seed: 1, seats: 1 }).seats).toHaveLength(2);
+    expect(createTable({ seed: 1, seats: 99 }).seats).toHaveLength(6);
+    expect(createTable({ seed: 1, seats: 0 }).seats.map((seat) => seat.name)).toEqual([
+      '你',
+      '机器人 A',
+    ]);
+    expect(createTable({ seed: 1, seats: 6 }).seats.map((seat) => seat.name)).toEqual([
+      '你',
+      '机器人 A',
+      '机器人 B',
+      '机器人 C',
+      '机器人 D',
+      '机器人 E',
+    ]);
+    // 默认 4 人桌不变。
+    expect(createTable({ seed: 1 }).seats).toHaveLength(TABLE_CONSTANTS.SEATS);
+  });
+
+  it('3 人以上：小盲在大盲在庄家左手边，且两个盲注座位永远不同', () => {
+    for (let count = 3; count <= TABLE_CONSTANTS.MAX_SEATS; count += 1) {
+      for (let button = 0; button < count; button += 1) {
+        const { smallBlind, bigBlind } = blindIndices(count, button);
+        expect(smallBlind).toBe((button + 1) % count);
+        expect(bigBlind).toBe((button + 2) % count);
+        expect(smallBlind).not.toBe(bigBlind);
+      }
+    }
+  });
+
+  it('两人单挑：庄家下小盲、翻牌前先行动，翻牌后由大盲先行动', () => {
+    let state = createTable({ seed: 7, seats: 2 });
+    expect(state.seats).toHaveLength(2);
+    const first = blindIndices(2, state.button);
+    // 单挑时庄家就是小盲，和三人以上不同。
+    expect(first.smallBlind).toBe(state.button);
+    expect(first.bigBlind).toBe((state.button + 1) % 2);
+    expect(state.seats[first.smallBlind].committedStreet).toBe(TABLE_CONSTANTS.SMALL_BLIND);
+    expect(state.seats[first.bigBlind].committedStreet).toBe(TABLE_CONSTANTS.BIG_BLIND);
+    // 翻牌前：小盲（也就是庄家）先说话。
+    expect(state.actor).toBe(first.smallBlind);
+
+    state = applyAction(state, first.smallBlind, { type: 'call' });
+    // 小盲补齐后，大盲保留一次选择权。
+    expect(state.actor).toBe(first.bigBlind);
+    state = applyAction(state, first.bigBlind, { type: 'check' });
+    expect(state.street).toBe('flop');
+    // 翻牌后：大盲（非庄家）先说话。
+    expect(state.actor).toBe(first.bigBlind);
+
+    // 第二手轮换庄家，两个盲注座位跟着换人。
+    const second = startHand(state);
+    expect(second.button).toBe((state.button + 1) % 2);
+    const swap = blindIndices(2, second.button);
+    expect(swap.smallBlind).toBe(second.button);
+    expect(swap.smallBlind).not.toBe(first.smallBlind);
+    expect(second.actor).toBe(swap.smallBlind);
+  });
+
+  it('2 ～ 6 人桌都由机器人打完几手：筹码守恒、无翻牌前全下、人数不变', () => {
+    let postflopAllInsTotal = 0;
+    let preflopAllInsTotal = 0;
+    const streetsSeen = new Set<string>();
+    for (let seats = 2; seats <= TABLE_CONSTANTS.MAX_SEATS; seats += 1) {
+      const rng = createRng(1000 + seats);
+      let state = createTable({ seed: 1000 + seats, seats });
+      for (let hand = 0; hand < 6; hand += 1) {
+        if (hand > 0) state = startHand(state);
+        expect(state.seats).toHaveLength(seats);
+        const total = totalChipsOnTable(state);
+        let guard = 0;
+        while (state.actor !== null) {
+          const action = decideBotAction(state, state.actor, rng);
+          expect(findLegalAction(state, state.actor, action)).toBeDefined();
+          streetsSeen.add(state.street);
+          if (action.type === 'allin') {
+            if (state.street === 'preflop') preflopAllInsTotal += 1;
+            else postflopAllInsTotal += 1;
+          }
+          state = applyAction(state, state.actor, action);
+          guard += 1;
+          expect(guard).toBeLessThan(600);
+        }
+        expect(totalChipsOnTable(state)).toBe(total);
+        expect(state.result).not.toBeNull();
+      }
+    }
+    // 翻牌前一次全下都没有；翻牌后确实会有人全下（覆盖到全下的分支）。
+    expect(preflopAllInsTotal).toBe(0);
+    expect(postflopAllInsTotal).toBeGreaterThan(0);
+    expect([...streetsSeen].sort()).toEqual(['flop', 'preflop', 'river', 'turn']);
   }, 60000);
 });

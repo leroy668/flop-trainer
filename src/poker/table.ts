@@ -28,8 +28,11 @@ import type { Rng } from './rng';
 import { createRng, shuffleInPlace } from './rng';
 
 export const TABLE_CONSTANTS = {
-  /** 座位数（含 Hero）。 */
+  /** 默认座位数（含 Hero）。 */
   SEATS: 4,
+  /** 允许的座位数（含 Hero）范围：2 人单挑 ～ 6 人满桌。 */
+  MIN_SEATS: 2,
+  MAX_SEATS: 6,
   /** 买入 / 补码上限。 */
   BUY_IN: 200,
   SMALL_BLIND: 5,
@@ -196,8 +199,30 @@ function nextLiveSeat(
 
 export interface TableOptions {
   seed?: number;
-  /** 座位数（含 Hero），默认 4。 */
+  /** 座位数（含 Hero），默认 4，会被夹在 MIN_SEATS ～ MAX_SEATS 之间。 */
   seats?: number;
+}
+
+/**
+ * 小盲 / 大盲座位。
+ * 三人以上是「庄家 → 小盲 → 大盲」；两人单挑时按标准规则由庄家下小盲。
+ * 界面上的小盲 / 大盲标记也走这个函数，避免两处规则不一致。
+ */
+export function blindIndices(
+  seatCount: number,
+  button: number,
+): { smallBlind: number; bigBlind: number } {
+  const count = Math.max(TABLE_CONSTANTS.MIN_SEATS, Math.floor(seatCount));
+  const seat = ((button % count) + count) % count;
+  if (count === 2) {
+    return { smallBlind: seat, bigBlind: (seat + 1) % count };
+  }
+  return { smallBlind: (seat + 1) % count, bigBlind: (seat + 2) % count };
+}
+
+/** 座位名：0 号位是你，之后是机器人 A、B、C…。 */
+export function botName(index: number): string {
+  return BOT_NAMES[index - 1] ?? `机器人 ${index + 1}`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -205,12 +230,16 @@ export interface TableOptions {
 /* ------------------------------------------------------------------ */
 
 export function createTable(options: TableOptions = {}): TableState {
-  const seatCount = Math.max(2, options.seats ?? TABLE_CONSTANTS.SEATS);
+  const requested = Math.floor(options.seats ?? TABLE_CONSTANTS.SEATS);
+  const seatCount = Math.min(
+    TABLE_CONSTANTS.MAX_SEATS,
+    Math.max(TABLE_CONSTANTS.MIN_SEATS, Number.isFinite(requested) ? requested : TABLE_CONSTANTS.SEATS),
+  );
   const seats: Seat[] = [];
   for (let i = 0; i < seatCount; i += 1) {
     seats.push({
       index: i,
-      name: i === 0 ? HERO_NAME : BOT_NAMES[i - 1] ?? `机器人 ${i}`,
+      name: i === 0 ? HERO_NAME : botName(i),
       isHero: i === 0,
       stack: TABLE_CONSTANTS.BUY_IN,
       hole: null,
@@ -299,8 +328,10 @@ export function startHand(state: TableState): TableState {
     next.seats[index].hole = [cards[0], cards[1]];
   }
 
-  const smallBlindIndex = (next.button + 1) % next.seats.length;
-  const bigBlindIndex = (next.button + 2) % next.seats.length;
+  const { smallBlind: smallBlindIndex, bigBlind: bigBlindIndex } = blindIndices(
+    next.seats.length,
+    next.button,
+  );
 
   const smallBlind = Math.min(TABLE_CONSTANTS.SMALL_BLIND, next.seats[smallBlindIndex].stack);
   const bigBlind = Math.min(TABLE_CONSTANTS.BIG_BLIND, next.seats[bigBlindIndex].stack);

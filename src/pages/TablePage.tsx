@@ -9,6 +9,7 @@ import {
   TABLE_CONSTANTS,
   TABLE_STREET_LABELS,
   applyAction,
+  blindIndices,
   canRebuy,
   createTable,
   legalActions,
@@ -22,7 +23,7 @@ import {
 import { formatPercent } from '../trainer/ranges';
 
 /**
- * 模拟牌桌：你 + 3 个电脑玩家。
+ * 模拟牌桌：你 + 1 ～ 5 个电脑玩家（人数随时可加减）。
  *
  * 规则见页面底部「本桌规则」；机器人用 `poker/ai.ts` 的胜率估计决策，
  * 所有动作都先经过 `legalActions` 过滤，因此不会出现非法动作。
@@ -41,7 +42,17 @@ const SETTINGS = {
   delay: 'flop-trainer:table-delay',
   equity: 'flop-trainer:table-equity',
   reveal: 'flop-trainer:table-reveal',
+  bots: 'flop-trainer:table-bots',
 };
+
+/** 可以选的机器人数量（含 Hero 就是 2 ～ 6 人桌）。 */
+const BOT_CHOICES = [1, 2, 3, 4, 5];
+const DEFAULT_BOTS = 3;
+
+function readBots(): number {
+  const saved = Number(readSetting(SETTINGS.bots, String(DEFAULT_BOTS)));
+  return BOT_CHOICES.includes(saved) ? saved : DEFAULT_BOTS;
+}
 
 function readSetting(key: string, fallback: string): string {
   try {
@@ -78,7 +89,7 @@ type UiAction =
   | { type: 'next' }
   | { type: 'rebuy' }
   | { type: 'undo' }
-  | { type: 'newGame'; seed: number };
+  | { type: 'newGame'; seed: number; seats: number };
 
 function reducer(state: UiState, action: UiAction): UiState {
   const keep = (): TableState[] =>
@@ -108,7 +119,11 @@ function reducer(state: UiState, action: UiAction): UiState {
       };
     }
     case 'newGame':
-      return { table: createTable({ seed: action.seed }), history: [] };
+      // 也把旧牌桌压进历史，改错人数时可以 ↩ 撤回上一步退回去。
+      return {
+        table: createTable({ seed: action.seed, seats: action.seats }),
+        history: keep(),
+      };
     default:
       return state;
   }
@@ -198,7 +213,10 @@ function SeatCard({
 
 export function TablePage() {
   const [ui, dispatch] = useReducer(reducer, undefined, () => ({
-    table: createTable({ seed: (Date.now() ^ 0x5f3759df) >>> 0 }),
+    table: createTable({
+      seed: (Date.now() ^ 0x5f3759df) >>> 0,
+      seats: readBots() + 1,
+    }),
     history: [],
   }));
   const [delay, setDelay] = useState(() => {
@@ -212,6 +230,10 @@ export function TablePage() {
   useEffect(() => writeSetting(SETTINGS.delay, String(delay)), [delay]);
   useEffect(() => writeSetting(SETTINGS.equity, showEquity ? '1' : '0'), [showEquity]);
   useEffect(() => writeSetting(SETTINGS.reveal, showAll ? '1' : '0'), [showAll]);
+  useEffect(
+    () => writeSetting(SETTINGS.bots, String(ui.table.seats.length - 1)),
+    [ui.table.seats.length],
+  );
 
   const { table } = ui;
   const hero = table.seats[0];
@@ -244,14 +266,22 @@ export function TablePage() {
   }, [table, delay]);
 
   const potOdds = toCall > 0 ? toCall / (table.pot + toCall) : 0;
-  const smallBlindIndex = (table.button + 1) % table.seats.length;
-  const bigBlindIndex = (table.button + 2) % table.seats.length;
+  const { smallBlind: smallBlindIndex, bigBlind: bigBlindIndex } = blindIndices(
+    table.seats.length,
+    table.button,
+  );
+  const botCount = table.seats.length - 1;
   const logs = [...table.log].reverse().slice(0, 60);
   const isShowdown = table.result?.kind === 'showdown';
 
-  const startNewGame = () => {
+  const startNewGame = (seats: number = table.seats.length) => {
     rngRef.current = createRng((Date.now() ^ 0x1234567) >>> 0);
-    dispatch({ type: 'newGame', seed: (Date.now() ^ 0xabcdef) >>> 0 });
+    dispatch({ type: 'newGame', seed: (Date.now() ^ 0xabcdef) >>> 0, seats });
+  };
+
+  const changeBots = (count: number) => {
+    if (count === botCount) return;
+    startNewGame(count + 1);
   };
 
   return (
@@ -260,7 +290,8 @@ export function TablePage() {
         <div>
           <h1>模拟牌桌</h1>
           <p className="muted">
-            <strong>不是标准无限注德州扑克</strong>：4 人桌，买入上限{' '}
+            <strong>不是标准无限注德州扑克</strong>：{table.seats.length} 人桌（你 +{' '}
+            {botCount} 个机器人，人数可以加减），买入上限{' '}
             {TABLE_CONSTANTS.BUY_IN} 筹码，盲注 {TABLE_CONSTANTS.SMALL_BLIND}/
             {TABLE_CONSTANTS.BIG_BLIND}，下注 / 加注只有{' '}
             {TABLE_CONSTANTS.BET_SIZES.join(' / ')} 三种额度，{' '}
@@ -277,7 +308,11 @@ export function TablePage() {
           <Link className="button button--ghost" to="/table">
             模拟牌桌
           </Link>
-          <button type="button" className="button button--ghost" onClick={startNewGame}>
+          <button
+            type="button"
+            className="button button--ghost"
+            onClick={() => startNewGame()}
+          >
             重开牌桌
           </button>
         </div>
@@ -437,6 +472,23 @@ export function TablePage() {
         )}
 
         <div className="table-toolbar">
+          <span className="muted small">对手数量</span>
+          <span className="table-bots">
+            {BOT_CHOICES.map((count) => (
+              <button
+                key={count}
+                type="button"
+                className={`chip chip--bot ${botCount === count ? 'chip--selected' : ''}`}
+                title={`${count} 个机器人（${count + 1} 人桌）`}
+                onClick={() => changeBots(count)}
+              >
+                {count}
+              </button>
+            ))}
+          </span>
+          <span className="muted small table-bots__hint">
+            改变人数会立刻重开牌桌（可 ↩ 撤回）
+          </span>
           <span className="muted small">电脑思考速度</span>
           {SPEEDS.map((speed) => (
             <button
@@ -552,11 +604,16 @@ export function TablePage() {
         <h2 className="tax-note__title">本桌规则</h2>
         <ul className="tax-note">
           <li>
-            4 人桌：你 + 3 个电脑玩家，每人最多带 <strong>200 筹码</strong>；
-            筹码低于 20 时，下一手开始前自动补码回 200，你也可以在手与手之间手动补码。
+            人数随时可加减：工具栏的「对手数量」可以选 <strong>1 ～ 5 个机器人</strong>
+            （也就是 2 ～ 6 人桌）。改变人数会立刻开一桌新的，用 ↩ 撤回上一步可以退回原来那桌。
+          </li>
+          <li>
+            每人最多带 <strong>200 筹码</strong>；筹码低于 20 时，下一手开始前自动补码回 200，
+            你也可以在手与手之间手动补码。
           </li>
           <li>
             小盲 5 / 大盲 10，每手轮换庄家；翻牌前从大盲左手边开始，翻牌后从庄家左手边开始。
+            两人单挑时庄家下小盲、翻牌前先说话，翻牌后换大盲先说话（标准单挑规则）。
           </li>
           <li>
             <strong>这不是标准无限注德州扑克</strong>，只有两条最重要的改动：下注 / 加注额度固定为{' '}

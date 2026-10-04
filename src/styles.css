@@ -2238,6 +2238,23 @@ h3 {
   border-top: 1px dashed var(--border);
 }
 
+.table-bots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.table-bots .chip--bot {
+  min-width: 34px;
+  padding: 6px 0;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.table-bots__hint {
+  margin-right: 4px;
+}
+
 .button--tiny {
   padding: 2px 8px;
   font-size: 12.5px;

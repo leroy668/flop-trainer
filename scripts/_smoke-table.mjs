@@ -1,6 +1,7 @@
 /**
  * 临时冒烟：检查 #/table 模拟牌桌页（发牌、下注、自动出牌、结算、补码、筹码守恒）。
- *   node scripts/_smoke-table.mjs [--strategy=call|fold|allin] [--hands=3] [--size=1200x900]
+ *   node scripts/_smoke-table.mjs [--strategy=call|fold|allin|random] [--hands=3] [--size=1200x900]
+ *   node scripts/_smoke-table.mjs --bots=2      先把机器人数量调成 2（3 人桌）
  *   node scripts/_smoke-table.mjs --once     只报告初始状态，不自动打牌
  */
 import { execFileSync } from 'node:child_process';
@@ -33,6 +34,7 @@ var STRATEGY = ${JSON.stringify(option('strategy') ?? 'call')};
 var HANDS = ${Number(option('hands') ?? 3)};
 var ONCE = ${flag('once') ? 'true' : 'false'};
 var SPEED = ${JSON.stringify(option('speed'))};
+var BOTS = ${option('bots') === null ? 'null' : Number(option('bots'))};
 var finalSeats = 0;
 function txt(el) { return el ? el.innerText.replace(/\\s+/g, ' ').trim() : null; }
 function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
@@ -51,7 +53,7 @@ function finish(payload) {
 }
 (async function run() {
   var tries = 0;
-  while (document.querySelectorAll('.seat').length < 4 && tries < 200) {
+  while (document.querySelectorAll('.seat').length < 2 && tries < 200) {
     tries += 1;
     await sleep(50);
   }
@@ -69,6 +71,13 @@ function finish(payload) {
   out.seatCount = document.querySelectorAll('.seat').length;
   out.dealerBadge = txt(document.querySelector('.seat__badge--dealer'));
   out.badges = [].map.call(document.querySelectorAll('.seat__badge'), txt);
+  out.seatBadges = [].map.call(document.querySelectorAll('.seat'), function (seatEl) {
+    return (
+      txt(seatEl.querySelector('.seat__name')) +
+      '：' +
+      ([].map.call(seatEl.querySelectorAll('.seat__badge'), txt).join('+') || '-')
+    );
+  });
   out.heroCards = document.querySelectorAll('.seat--hero .card:not(.card--hidden)').length;
   out.hiddenCardsAtStart = document.querySelectorAll('.seat .card--hidden').length;
   out.boardSlots = document.querySelectorAll('.table-board .card').length;
@@ -79,6 +88,50 @@ function finish(payload) {
   out.heroEquityPanel = txt(document.querySelector('.table-equity'));
   out.toolbarChips = [].map.call(document.querySelectorAll('.table-toolbar .chip'), txt);
 
+  out.botChips = [].map.call(document.querySelectorAll('.table-bots .chip'), txt);
+  var selectedBotChip = document.querySelector('.table-bots .chip--selected');
+  out.botChipSelected = txt(selectedBotChip);
+  if (BOTS !== null) {
+    // 加减机器人：点一下工具栏的「对手数量」，座位数应该立刻跟着变。
+    var before = document.querySelectorAll('.seat').length;
+    var botChip = [].slice
+      .call(document.querySelectorAll('.table-bots .chip'))
+      .find(function (c) { return txt(c) === String(BOTS); });
+    out.botChipFound = Boolean(botChip);
+    if (botChip) {
+      botChip.click();
+      for (var w = 0; w < 40 && document.querySelectorAll('.seat').length === before; w += 1) {
+        await sleep(50);
+      }
+    }
+    out.seatsBeforeBotChange = before;
+    out.seatCountAfterBotChange = document.querySelectorAll('.seat').length;
+    out.seatNamesAfterBotChange = [].map.call(document.querySelectorAll('.seat__name'), txt);
+    out.botChipSelectedAfter = txt(document.querySelector('.table-bots .chip--selected'));
+    out.botsStored = window.localStorage.getItem('flop-trainer:table-bots');
+    out.toolbarButtons = [].map.call(
+      document.querySelectorAll('.table-toolbar .button'),
+      function (b) { return txt(b) + (b.disabled ? '(disabled)' : ''); },
+    );
+    out.actionButtons = [].map.call(
+      document.querySelectorAll('.table-actions .actions .button'),
+      txt,
+    );
+    out.headerAfterBotChange = txt(document.querySelector('.page__header p'));
+    out.badgesAfterBotChange = [].map.call(document.querySelectorAll('.seat'), function (seatEl) {
+      return (
+        txt(seatEl.querySelector('.seat__name')) +
+        '：' +
+        ([].map.call(seatEl.querySelectorAll('.seat__badge'), txt).join('+') || '-')
+      );
+    });
+    out.potAfterBotChange = txt(document.querySelector('.table-pot__value'));
+    // 改人数后应该能撤回原来的牌桌。
+    var undoBtn = [].slice
+      .call(document.querySelectorAll('.table-actions .button'))
+      .find(function (b) { return txt(b).indexOf('撤回') >= 0; });
+    out.undoAfterBotChange = Boolean(undoBtn);
+  }
   var buttons = [].slice.call(document.querySelectorAll('.table-button'));
   out.firstButtons = [].map.call(buttons, function (b) { return txt(b); });
   out.firstButtonsAllIn = buttons.some(function (b) {
